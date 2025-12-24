@@ -1,4 +1,4 @@
-import { Brain, Feather, Rocket, Users, TrendingUp, DollarSign, Target, Sparkles, Menu, Settings, LogOut, Plus, FileText, Image as ImageIcon, Loader2, MessageSquare } from 'lucide-react';
+import { Brain, Feather, Rocket, Users, TrendingUp, DollarSign, Target, Sparkles, Menu, Settings, LogOut, Plus, FileText, Image as ImageIcon, Loader2, MessageSquare, Shield, X } from 'lucide-react';
 import { Screen } from '../App';
 import { useState, memo, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,13 +6,14 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Wallet } from './Wallet';
 
 interface DashboardProps {
-  user: { name: string; plan: 'Free' | 'Pro' | 'Business' } | null;
+  user: { name: string; plan: 'Free' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null;
   onNavigate: (screen: Screen) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }: DashboardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const { signOut } = useAuth();
@@ -83,16 +84,26 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
       {/* Header */}
       <header className="border-b border-slate-800 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h2 className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 bg-clip-text text-transparent">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-shrink-0">
+              <h2 className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 bg-clip-text text-transparent text-lg sm:text-xl whitespace-nowrap">
                 DIAR
               </h2>
-              <span className="hidden sm:block text-gray-500">|</span>
-              <span className="hidden sm:block text-gray-400">AI Marketing CRM</span>
+              <span className="hidden sm:block text-gray-500 flex-shrink-0">|</span>
+              <span className="hidden sm:block text-gray-400 text-sm sm:text-base whitespace-nowrap">AI Marketing CRM</span>
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center gap-2 sm:gap-4">
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => onNavigate('admin')}
+                  className="px-4 py-2 rounded-lg bg-yellow-400/20 hover:bg-yellow-400/30 text-yellow-400 flex items-center gap-2 transition-colors border border-yellow-400/30"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>Админ-панель</span>
+                </button>
+              )}
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
@@ -103,7 +114,7 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
 
               <button
                 onClick={handleNavigateToSubscription}
-                className={`px-4 py-2 rounded-lg ${
+                className={`px-4 py-2 rounded-lg flex-shrink-0 ${
                   user?.plan === 'Free'
                     ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
                     : 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
@@ -121,7 +132,7 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
                 </button>
 
                 {menuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
                     <button
                       onClick={handleNavigateToIntegrations}
                       className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
@@ -149,6 +160,90 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Mobile burger menu */}
+            <div className="sm:hidden relative">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5 text-white" />
+                ) : (
+                  <Menu className="w-5 h-5 text-white" />
+                )}
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    {user?.role === 'admin' && (
+                      <button
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          onNavigate('admin');
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 text-yellow-400"
+                      >
+                        <Shield className="w-5 h-5" />
+                        <span>Админ-панель</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('support');
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <MessageSquare className="w-5 h-5" />
+                      <span>Техподдержка</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        handleNavigateToSubscription();
+                      }}
+                      className={`w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 ${
+                        user?.plan === 'Free'
+                          ? 'text-yellow-400'
+                          : 'text-purple-400'
+                      }`}
+                    >
+                      <span className="font-semibold">{user?.plan}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        handleNavigateToIntegrations();
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <Settings className="w-5 h-5" />
+                      <span>Интеграции</span>
+                    </button>
+                    <div className="border-t border-slate-700">
+                      <button 
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          handleSignOutClick();
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 text-red-400"
+                      >
+                        <LogOut className="w-5 h-5" />
+                        <span>Выйти</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

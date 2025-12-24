@@ -134,7 +134,7 @@ export const createCampaignSchema = z.object({
   platforms: z
     .array(z.string())
     .min(1, 'Выберите хотя бы одну платформу'),
-  status: z.string().max(50).optional().default('Активна'),
+  status: z.enum(['Активна', 'На паузе', 'На проверке']).optional().default('На проверке'),
   budget: z
     .union([
       z.number().positive('Бюджет должен быть положительным числом'),

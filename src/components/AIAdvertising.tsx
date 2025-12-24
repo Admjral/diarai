@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowLeft, Target, TrendingUp, DollarSign, Eye, MousePointer, Sparkles, X, Plus, Phone, MapPin, BarChart3, Play, Pause, MoreVertical, Loader2, Search, Filter, ArrowUpDown, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Target, TrendingUp, DollarSign, Eye, MousePointer, Sparkles, X, Plus, Phone, MapPin, BarChart3, Play, Pause, MoreVertical, Loader2, Search, Filter, ArrowUpDown, MessageSquare, Menu } from 'lucide-react';
 import { Screen } from '../App';
 import { campaignsAPI, aiAPI, APIError, AIAudienceResponse } from '../lib/api';
 import { getCache, setCache, clearCache, cacheKeys } from '../lib/cache';
@@ -166,7 +166,7 @@ function SafeImage({
               {onRegenerate && (
                 <button
                   onClick={onRegenerate}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded-lg transition-colors"
                 >
                   Сгенерировать заново
                 </button>
@@ -286,6 +286,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [detailCampaignIndex, setDetailCampaignIndex] = useState<number | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const availablePlatforms = ['Instagram', 'Facebook', 'Google Ads', 'TikTok', 'YouTube', 'VK', 'Telegram Ads'];
   
   // Состояния для поиска, фильтрации, сортировки и пагинации
@@ -917,7 +918,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       const campaignData = {
         name: data.name.trim(),
         platforms: data.platforms,
-        status: 'Активна',
+        status: 'На проверке',
         budget: budgetValue,
         spent: 0, // Отправляем как число, а не строку
         conversions: 0,
@@ -949,10 +950,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       setGeneratedImageUrl(null);
       setAdDescription('');
       
-      const successMessage = audience.optimizedBid 
-        ? `Кампания создана! AI подобрал аудиторию: ${audience.ageRange} лет, ${audience.interests.slice(0, 2).join(', ')}. Оптимальная ставка: ₸${audience.optimizedBid}`
-        : `Кампания создана! AI подобрал аудиторию: ${audience.ageRange} лет, ${audience.interests.slice(0, 2).join(', ')}`;
-      showToast(successMessage, 'success');
+      const successMessage = `Кампания "${data.name.trim()}" отправлена на проверку. Мы проверим её и активируем в ближайшее время.`;
+      showToast(successMessage, 'info');
     } catch (error: any) {
       console.error('Ошибка создания кампании:', error);
       
@@ -1059,19 +1058,20 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   }, [searchQuery, statusFilter, platformFilter, sortBy, sortOrder]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-black">
+    <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-black overflow-x-hidden w-full max-w-full">
       {/* Header */}
       <header className="border-b border-slate-800 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => onNavigate('dashboard')}
-              className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors flex-shrink-0"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-white">AI Реклама</h1>
-            <div className="flex items-center gap-4 ml-auto">
+            <h1 className="text-white text-lg sm:text-xl truncate">AI Реклама</h1>
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center gap-2 sm:gap-4 ml-auto">
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
@@ -1079,6 +1079,42 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <MessageSquare className="w-4 h-4" />
                 <span>Техподдержка</span>
               </button>
+            </div>
+            {/* Mobile burger menu */}
+            <div className="sm:hidden relative ml-auto">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5 text-white" />
+                ) : (
+                  <Menu className="w-5 h-5 text-white" />
+                )}
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('support');
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <MessageSquare className="w-5 h-5" />
+                      <span>Техподдержка</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1139,14 +1175,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 Ваша кампания "Летняя распродажа" показывает отличный CTR. Рекомендуем увеличить бюджет на 20% и 
                 расширить аудиторию на возрастную группу 25-34 года для повышения конверсий на 15-20%.
               </p>
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3 flex-wrap">
                 <button
                   onClick={() => showToast('Рекомендация применена', 'success')}
-                  className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl transition-colors"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl transition-colors text-sm sm:text-base"
                 >
                   Применить рекомендацию
                 </button>
-                <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors">
+                <button className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base">
                   Узнать больше
                 </button>
               </div>
@@ -1160,17 +1196,18 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
             <h2 className="text-white">Активные кампании</h2>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2"
+              className="px-3 sm:px-4 py-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 text-sm sm:text-base"
             >
-              <Plus className="w-5 h-5" />
-              Создать кампанию
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Создать кампанию</span>
+              <span className="sm:hidden">Создать</span>
             </button>
           </div>
 
           {/* Поиск и фильтры */}
           <div className="mb-6 space-y-4">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="relative max-w-md flex-1 min-w-[200px]">
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+              <div className="relative max-w-md flex-1 min-w-0 sm:min-w-[200px]">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
                   type="text"
@@ -1182,21 +1219,21 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </div>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className={`px-4 py-3 rounded-xl flex items-center gap-2 transition-colors ${
+                className={`px-3 sm:px-4 py-2 sm:py-3 rounded-xl flex items-center gap-2 transition-colors text-sm sm:text-base ${
                   showFilters || statusFilter !== 'all' || platformFilter !== 'all'
                     ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
                     : 'bg-slate-800/50 border border-slate-700 text-gray-400 hover:text-white'
                 }`}
               >
-                <Filter className="w-5 h-5" />
-                Фильтры
+                <Filter className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Фильтры</span>
               </button>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm">Сортировка:</span>
+                <span className="text-gray-400 text-sm hidden sm:inline">Сортировка:</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
+                  className="bg-slate-800/50 border border-slate-700 rounded-lg px-2 sm:px-3 py-2 text-white text-xs sm:text-sm focus:outline-none focus:border-yellow-500/50"
                 >
                   <option value="date">По дате</option>
                   <option value="name">По названию</option>
@@ -1207,7 +1244,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 </select>
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors"
+                  className="px-2 sm:px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors"
                   title={sortOrder === 'asc' ? 'По возрастанию' : 'По убыванию'}
                 >
                   <ArrowUpDown className="w-4 h-4" />
@@ -1217,7 +1254,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
             {/* Панель фильтров */}
             {showFilters && (
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex items-center gap-4 flex-wrap">
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="text-gray-400">Статус:</span>
                   <select
@@ -1272,7 +1309,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               <p className="text-gray-400 mb-4">У вас пока нет кампаний</p>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow"
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow text-sm sm:text-base"
               >
                 Создать первую кампанию
               </button>
@@ -1286,7 +1323,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   setStatusFilter('all');
                   setPlatformFilter('all');
                 }}
-                className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base"
               >
                 Сбросить фильтры
               </button>
@@ -1341,11 +1378,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           {/* Platforms */}
                           <div className="mb-3">
                             <p className="text-gray-400 text-xs mb-2 font-medium">Платформы рекламы</p>
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
                               {campaign.platforms.map((platform, idx) => (
                                 <span 
                                   key={idx} 
-                                  className="px-3 py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-lg text-xs font-medium text-blue-300"
+                                  className="px-2 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-lg text-xs font-medium text-blue-300 whitespace-nowrap w-full sm:w-auto"
                                 >
                                   {platform}
                                 </span>
@@ -1380,19 +1417,19 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       <h4 className="text-white font-semibold text-sm">Бюджет кампании</h4>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mb-4">
                       <div>
                         <p className="text-gray-400 text-xs mb-1">Выделено</p>
-                        <p className="text-white font-bold text-xl">{campaign.budget}</p>
+                        <p className="text-white font-bold text-lg sm:text-xl">{campaign.budget}</p>
                       </div>
                       <div>
                         <p className="text-gray-400 text-xs mb-1">Потрачено</p>
-                        <p className="text-white font-bold text-xl">{campaign.spent}</p>
+                        <p className="text-white font-bold text-lg sm:text-xl">{campaign.spent}</p>
                         <p className="text-gray-500 text-xs mt-0.5">{progress.toFixed(1)}% бюджета</p>
                       </div>
                       <div>
                         <p className="text-gray-400 text-xs mb-1">Осталось</p>
-                        <p className="text-white font-bold text-xl">₸{remaining.toLocaleString()}</p>
+                        <p className="text-white font-bold text-lg sm:text-xl">₸{remaining.toLocaleString()}</p>
                       </div>
                     </div>
                     
@@ -1482,18 +1519,18 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         <Sparkles className="w-4 h-4 text-purple-400" />
                         <p className="text-gray-400 text-sm font-medium">Подобранная AI аудитория</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-xs font-medium flex items-center gap-1.5">
-                          <Target className="w-3 h-3" />
-                          {campaign.audience.ageRange} лет
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
+                        <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-xs font-medium flex items-center gap-1 sm:gap-1.5 w-full sm:w-auto">
+                          <Target className="w-3 h-3 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{campaign.audience.ageRange} лет</span>
                         </span>
                         {campaign.audience.interests.slice(0, 4).map((interest, idx) => (
-                          <span key={idx} className="px-3 py-1.5 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium">
+                          <span key={idx} className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium whitespace-nowrap w-full sm:w-auto">
                             {interest}
                           </span>
                         ))}
                         {campaign.audience.interests.length > 4 && (
-                          <span className="px-3 py-1.5 bg-slate-700/50 text-gray-400 rounded-lg text-xs">
+                          <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-700/50 text-gray-400 rounded-lg text-xs whitespace-nowrap w-full sm:w-auto">
                             +{campaign.audience.interests.length - 4} еще
                           </span>
                         )}
@@ -1535,15 +1572,15 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
       {/* Campaign Stats Modal */}
       {statsCampaignIndex !== null && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setStatsCampaignIndex(null)}>
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setStatsCampaignIndex(null)}>
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-[95%] sm:w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-white text-xl font-semibold mb-1">
                   Статистика: {campaigns[statsCampaignIndex]?.name}
                 </h3>
-                <p className="text-gray-400 text-sm">
-                  {campaigns[statsCampaignIndex]?.platforms.join(', ')} • {campaigns[statsCampaignIndex]?.status}
+                <p className="text-gray-400 text-xs sm:text-sm break-words">
+                  <span className="whitespace-normal">{campaigns[statsCampaignIndex]?.platforms.join(', ')}</span> • {campaigns[statsCampaignIndex]?.status}
                 </p>
               </div>
               <button
@@ -1616,7 +1653,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         style={{ width: `${Math.min(progress, 100)}%` }}
                       ></div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 text-sm">
                       <div>
                         <p className="text-gray-400">Выделено</p>
                         <p className="text-white font-semibold">{campaign.budget}</p>
@@ -1659,9 +1696,9 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             <span className="text-gray-400 text-sm">Возраст: </span>
                             <span className="text-white font-semibold">{campaign.audience.ageRange} лет</span>
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <span className="text-gray-400 text-sm">Интересы: </span>
-                            <span className="text-white text-sm">{campaign.audience.interests.slice(0, 3).join(', ')}</span>
+                            <span className="text-white text-sm break-words">{campaign.audience.interests.slice(0, 3).join(', ')}</span>
                           </div>
                         </div>
                       ) : (
@@ -1678,8 +1715,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
       {/* Campaign Detail Modal */}
       {detailCampaignIndex !== null && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setDetailCampaignIndex(null)}>
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setDetailCampaignIndex(null)}>
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-[95%] sm:max-w-[90%] md:max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {(() => {
               const campaign = campaigns[detailCampaignIndex];
               if (!campaign) return null;
@@ -1694,11 +1731,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               return (
                 <>
                   {/* Header */}
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h3 className="text-white text-2xl font-bold break-words">{campaign.name}</h3>
-                        <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
+                  <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap min-w-0">
+                        <h3 className="text-white text-lg sm:text-2xl font-bold break-words flex-1 min-w-0">{campaign.name}</h3>
+                        <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
                           campaign.status === 'Активна'
                             ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                             : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
@@ -1716,24 +1753,24 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     </div>
                     <button
                       onClick={() => setDetailCampaignIndex(null)}
-                      className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-slate-700 rounded-lg"
+                      className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-slate-700 rounded-lg flex-shrink-0"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
 
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {/* Platforms */}
-                    <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                    <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                       <div className="flex items-center gap-2 mb-4">
-                        <Target className="w-5 h-5 text-blue-400" />
+                        <Target className="w-5 h-5 text-blue-400 flex-shrink-0" />
                         <h4 className="text-white font-semibold text-sm">Платформы рекламы</h4>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
                         {campaign.platforms.map((platform, idx) => (
                           <span 
                             key={idx} 
-                            className="px-3 py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-lg text-sm font-medium text-blue-300"
+                            className="px-2 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-lg text-xs sm:text-sm font-medium text-blue-300 whitespace-nowrap flex-shrink-0"
                           >
                             {platform}
                           </span>
@@ -1742,20 +1779,20 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     </div>
 
                     {/* Ad Text */}
-                    <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                    <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                       <div className="flex items-center gap-2 mb-4">
-                        <Sparkles className="w-5 h-5 text-purple-400" />
+                        <Sparkles className="w-5 h-5 text-purple-400 flex-shrink-0" />
                         <h4 className="text-white font-semibold text-sm">Текст объявления</h4>
                       </div>
                       {campaign.audience?.adText && campaign.audience.adText.trim() ? (
-                        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/30">
-                          <p className="text-gray-200 text-sm whitespace-pre-wrap leading-relaxed">
+                        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/30 min-w-0">
+                          <p className="text-gray-200 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed break-words">
                             {campaign.audience.adText}
                           </p>
                         </div>
                       ) : (
-                        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/30">
-                          <p className="text-gray-500 text-sm italic">
+                        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/30 min-w-0">
+                          <p className="text-gray-500 text-xs sm:text-sm italic break-words">
                             Текст объявления не задан. Отредактируйте кампанию, чтобы добавить текст.
                           </p>
                         </div>
@@ -1775,28 +1812,28 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     {/* Budget & Performance */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Budget */}
-                      <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                         <div className="flex items-center gap-2 mb-4">
-                          <DollarSign className="w-5 h-5 text-yellow-400" />
-                          <h4 className="text-white font-semibold text-sm">Бюджет</h4>
+                          <DollarSign className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+                          <h4 className="text-white font-semibold text-sm">Бюджет кампании</h4>
                         </div>
                         <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">Выделено</span>
-                            <span className="text-white font-bold">{campaign.budget}</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Выделено</span>
+                            <span className="text-white font-bold text-sm sm:text-base break-words text-right">{campaign.budget}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">Потрачено</span>
-                            <span className="text-white font-bold">{campaign.spent}</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Потрачено</span>
+                            <span className="text-white font-bold text-sm sm:text-base break-words text-right">{campaign.spent}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">Осталось</span>
-                            <span className="text-white font-bold">₸{remaining.toLocaleString()}</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Осталось</span>
+                            <span className="text-white font-bold text-sm sm:text-base break-words text-right">₸{remaining.toLocaleString()}</span>
                           </div>
                           <div className="pt-2">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-gray-400 text-xs">Использование</span>
-                              <span className="text-gray-300 text-xs font-medium">{progress.toFixed(1)}%</span>
+                            <div className="flex items-center justify-between mb-2 gap-2">
+                              <span className="text-gray-400 text-xs flex-shrink-0">Использование бюджета</span>
+                              <span className="text-gray-300 text-xs font-medium whitespace-nowrap">{progress.toFixed(1)}%</span>
                             </div>
                             <div className="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden">
                               <div
@@ -1814,41 +1851,40 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         </div>
                       </div>
 
-                      {/* Ad Text */}
-                      <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
-                        <div className="flex items-center gap-2 mb-4">
-                          <Sparkles className="w-5 h-5 text-yellow-400" />
-                          <h4 className="text-white font-semibold text-sm">Текст объявления</h4>
-                        </div>
-                        {campaign.audience?.adText && campaign.audience.adText.trim() ? (
-                          <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
-                            {campaign.audience.adText}
-                          </p>
-                        ) : (
-                          <p className="text-gray-500 text-sm italic">
-                            Текст объявления не задан. Отредактируйте кампанию, чтобы добавить текст.
-                          </p>
-                        )}
-                      </div>
-
                       {/* Performance Metrics */}
-                      <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                         <div className="flex items-center gap-2 mb-4">
-                          <TrendingUp className="w-5 h-5 text-green-400" />
+                          <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0" />
                           <h4 className="text-white font-semibold text-sm">Показатели эффективности</h4>
                         </div>
                         <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">Конверсии</span>
-                            <span className="text-white font-bold text-lg">{campaign.conversions}</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Конверсии</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">{campaign.conversions}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">CPC</span>
-                            <span className="text-white font-bold text-lg">₸{cpc === 0 ? '—' : cpc.toLocaleString()}</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">CPC</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">₸{cpc === 0 ? '—' : cpc.toLocaleString()}</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-400 text-sm">ROAS</span>
-                            <span className="text-green-400 font-bold text-lg">{roas}x</span>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Стоимость конверсии</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">₸{cpc === 0 ? '—' : cpc.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">ROAS</span>
+                            <span className="text-green-400 font-bold text-base sm:text-lg break-words text-right">{roas}x</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Возврат инвестиций</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">+18%</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Эффективность</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">0.00</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2 min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0">Конверсий на ₸1000</span>
+                            <span className="text-white font-bold text-base sm:text-lg break-words text-right">0</span>
                           </div>
                         </div>
                       </div>
@@ -1856,22 +1892,22 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
                     {/* Contact Information */}
                     {(campaign.phone || campaign.location) && (
-                      <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                         <div className="flex items-center gap-2 mb-4">
-                          <Phone className="w-5 h-5 text-blue-400" />
+                          <Phone className="w-5 h-5 text-blue-400 flex-shrink-0" />
                           <h4 className="text-white font-semibold text-sm">Контактная информация</h4>
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-3 min-w-0">
                           {campaign.phone && (
-                            <div className="flex items-center gap-3">
-                              <Phone className="w-4 h-4 text-blue-400" />
-                              <span className="text-gray-300">{campaign.phone}</span>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Phone className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                              <span className="text-gray-300 text-xs sm:text-sm break-words">{campaign.phone}</span>
                             </div>
                           )}
                           {campaign.location && (
-                            <div className="flex items-center gap-3">
-                              <MapPin className="w-4 h-4 text-purple-400" />
-                              <span className="text-gray-300">{campaign.location}</span>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <MapPin className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                              <span className="text-gray-300 text-xs sm:text-sm break-words">{campaign.location}</span>
                             </div>
                           )}
                         </div>
@@ -1880,71 +1916,86 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
                     {/* Audience */}
                     {campaign.audience && (
-                      <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
+                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                         <div className="flex items-center gap-2 mb-4">
-                          <Sparkles className="w-5 h-5 text-purple-400" />
-                          <h4 className="text-white font-semibold text-sm">Целевая аудитория</h4>
+                          <Sparkles className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                          <h4 className="text-white font-semibold text-sm">Подобранная AI аудитория</h4>
                         </div>
-                        <div className="space-y-4">
-                          <div>
-                            <span className="text-gray-400 text-sm">Возраст: </span>
-                            <span className="text-white font-semibold">{campaign.audience.ageRange} лет</span>
+                        <div className="space-y-4 min-w-0">
+                          <div className="min-w-0">
+                            <span className="text-gray-400 text-xs sm:text-sm">Возраст: </span>
+                            <span className="text-white font-semibold text-xs sm:text-sm break-words">{campaign.audience.ageRange} лет</span>
                           </div>
-                          <div>
-                            <p className="text-gray-400 text-sm mb-2">Интересы:</p>
-                            <div className="flex flex-wrap gap-2">
+                          <div className="min-w-0">
+                            <p className="text-gray-400 text-xs sm:text-sm mb-2">Интересы:</p>
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
                               {campaign.audience.interests.map((interest, idx) => (
                                 <span 
                                   key={idx} 
-                                  className="px-3 py-1.5 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium"
+                                  className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium whitespace-nowrap w-full sm:w-auto"
                                 >
                                   {interest}
                                 </span>
                               ))}
                             </div>
                           </div>
+                          {campaign.audience.platforms && campaign.audience.platforms.length > 0 && (
+                            <div className="min-w-0">
+                              <p className="text-gray-400 text-xs sm:text-sm mb-2">Платформы:</p>
+                              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
+                                {campaign.audience.platforms.map((platform, idx) => (
+                                  <span 
+                                    key={idx} 
+                                    className="px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-xs font-medium whitespace-nowrap w-full sm:w-auto"
+                                  >
+                                    {platform}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 sm:gap-3 pt-4 border-t border-slate-700 flex-wrap">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-4 border-t border-slate-700">
                       <button
                         onClick={() => {
                           setDetailCampaignIndex(null);
                           openCampaignStats(detailCampaignIndex);
                         }}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-sm"
+                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
                       >
                         <BarChart3 className="w-4 h-4 flex-shrink-0" />
-                        <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Статистика</span>
+                        <span className="font-medium whitespace-nowrap">Статистика</span>
                       </button>
                       <button
                         onClick={() => {
                           setDetailCampaignIndex(null);
                           openEditModal(detailCampaignIndex);
                         }}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors text-sm"
+                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
                       >
                         <Sparkles className="w-4 h-4 flex-shrink-0" />
-                        <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Редактировать</span>
+                        <span className="font-medium whitespace-nowrap">Редактировать</span>
                       </button>
                       <button
                         onClick={() => {
                           setDetailCampaignIndex(null);
                           toggleCampaignStatus(detailCampaignIndex);
                         }}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-gray-300 rounded-lg transition-colors text-sm"
+                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-700/50 hover:bg-slate-700 text-gray-300 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
                       >
                         {campaign.status === 'Активна' ? (
                           <>
                             <Pause className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Приостановить</span>
+                            <span className="font-medium whitespace-nowrap">Приостановить</span>
                           </>
                         ) : (
                           <>
                             <Play className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Возобновить</span>
+                            <span className="font-medium whitespace-nowrap">Возобновить</span>
                           </>
                         )}
                       </button>
@@ -1954,17 +2005,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           duplicateCampaign(detailCampaignIndex);
                         }}
                         disabled={isDuplicating === campaign.id || isDeleting === detailCampaignIndex}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm w-full sm:w-auto"
                       >
                         {isDuplicating === campaign.id ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Копирование...</span>
+                            <span className="font-medium whitespace-nowrap">Копирование...</span>
                           </>
                         ) : (
                           <>
                             <Target className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Дублировать</span>
+                            <span className="font-medium whitespace-nowrap">Дублировать</span>
                           </>
                         )}
                       </button>
@@ -1974,17 +2025,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           handleDeleteClick(detailCampaignIndex);
                         }}
                         disabled={isDeleting === detailCampaignIndex}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm w-full sm:w-auto"
                       >
                         {isDeleting === detailCampaignIndex ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Удаление...</span>
+                            <span className="font-medium whitespace-nowrap">Удаление...</span>
                           </>
                         ) : (
                           <>
                             <X className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Удалить</span>
+                            <span className="font-medium whitespace-nowrap">Удалить</span>
                           </>
                         )}
                       </button>
@@ -1999,8 +2050,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
       {/* Create Campaign Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-[500px] max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white">Создать рекламную кампанию</h3>
               <button
@@ -2051,19 +2102,19 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     {(createForm.watch('platforms') || []).length === availablePlatforms.length ? 'Снять все' : 'Выбрать все'}
                   </button>
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-3">
+                <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-2 sm:p-3">
                   {availablePlatforms.map((platform) => (
                     <label
                       key={platform}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors"
+                      className="flex items-center gap-2 sm:gap-3 p-1.5 sm:p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors min-w-0"
                     >
                       <input
                         type="checkbox"
                         checked={(createForm.watch('platforms') || []).includes(platform)}
                         onChange={() => handlePlatformToggle(platform)}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2"
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 flex-shrink-0"
                       />
-                      <span className="text-white text-sm">{platform}</span>
+                      <span className="text-white text-xs sm:text-sm break-words min-w-0">{platform}</span>
                     </label>
                   ))}
                 </div>
@@ -2204,9 +2255,9 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         <div>
                           <p className="text-xs text-blue-300 mb-2 font-semibold">Подобранная аудитория:</p>
                           <div className="space-y-1 text-xs text-gray-300">
-                            <p><span className="text-gray-400">Возраст:</span> {selectedAudience.ageRange} лет</p>
-                            <p><span className="text-gray-400">Интересы:</span> {selectedAudience.interests.join(', ')}</p>
-                            <p><span className="text-gray-400">Платформы:</span> {selectedAudience.platforms.join(', ')}</p>
+                            <p className="break-words"><span className="text-gray-400">Возраст:</span> {selectedAudience.ageRange} лет</p>
+                            <p className="break-words"><span className="text-gray-400">Интересы:</span> <span className="whitespace-normal">{selectedAudience.interests.join(', ')}</span></p>
+                            <p className="break-words"><span className="text-gray-400">Платформы:</span> <span className="whitespace-normal">{selectedAudience.platforms.join(', ')}</span></p>
                             {selectedAudience.optimizedBid && (
                               <p><span className="text-gray-400">Оптимальная ставка:</span> <span className="text-yellow-400 font-semibold">₸{selectedAudience.optimizedBid}</span></p>
                             )}
@@ -2242,17 +2293,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         }
                       }}
                       disabled={isGeneratingImage}
-                      className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-300 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-300 rounded-lg text-xs sm:text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2"
                     >
                       {isGeneratingImage ? (
-                        <span key="generating" className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Генерация изображения...</span>
+                        <span key="generating" className="flex items-center gap-1 sm:gap-2">
+                          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                          <span className="whitespace-nowrap">Генерация изображения...</span>
                         </span>
                       ) : (
-                        <span key="generate" className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4" />
-                          <span>Сгенерировать изображение AI</span>
+                        <span key="generate" className="flex items-center gap-1 sm:gap-2">
+                          <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="whitespace-nowrap">Сгенерировать изображение AI</span>
                         </span>
                       )}
                     </button>
@@ -2302,7 +2353,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* Instagram превью */}
                             {(platform === 'Instagram' || platform === 'Facebook') && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden" style={{ maxWidth: '400px' }}>
+                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden w-full max-w-sm mx-auto">
                                 {generatedImageUrl ? (
                                   <SafeImage 
                                     src={generatedImageUrl} 
@@ -2350,7 +2401,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* TikTok превью */}
                             {platform === 'TikTok' && (
-                              <div className="relative bg-black rounded-lg overflow-hidden mx-auto" style={{ width: '300px', height: '533px' }}>
+                              <div className="relative bg-black rounded-lg overflow-hidden mx-auto w-full max-w-[300px] aspect-[9/16]">
                                 {generatedImageUrl ? (
                                   <SafeImage 
                                     src={generatedImageUrl} 
@@ -2390,7 +2441,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* YouTube превью */}
                             {platform === 'YouTube' && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden" style={{ maxWidth: '640px' }}>
+                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden w-full max-w-2xl mx-auto">
                                 {generatedImageUrl ? (
                                   <SafeImage 
                                     src={generatedImageUrl} 
@@ -2433,7 +2484,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* Google Ads превью */}
                             {platform === 'Google Ads' && (
-                              <div className="bg-slate-800 text-white border border-slate-700 rounded-lg p-4" style={{ maxWidth: '600px' }}>
+                              <div className="bg-slate-800 text-white border border-slate-700 rounded-lg p-4 w-full max-w-xl mx-auto">
                                 <div className="flex gap-3">
                                   {generatedImageUrl && (
                                     <SafeImage 
@@ -2477,7 +2528,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* VK превью */}
                             {platform === 'VK' && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700" style={{ maxWidth: '500px' }}>
+                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700 w-full max-w-lg mx-auto">
                                 {generatedImageUrl ? (
                                   <SafeImage 
                                     src={generatedImageUrl} 
@@ -2517,7 +2568,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             
                             {/* Telegram Ads превью */}
                             {platform === 'Telegram Ads' && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700" style={{ maxWidth: '400px' }}>
+                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700 w-full max-w-sm mx-auto">
                                 {generatedImageUrl ? (
                                   <img 
                                     src={generatedImageUrl} 
@@ -2570,11 +2621,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 </div>
               )}
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-2 sm:gap-3 mt-6 flex-wrap">
                 <button
                   type="submit"
                   disabled={isSelectingAudience || createForm.formState.isSubmitting}
-                  className="flex-1 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 min-w-0 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
                   {isSelectingAudience ? 'Подбор аудитории...' : createForm.formState.isSubmitting ? 'Создание...' : 'Создать кампанию'}
                 </button>
@@ -2590,7 +2641,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     createForm.reset();
                   }}
                   disabled={isSelectingAudience}
-                  className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base flex-1 sm:flex-initial min-w-0"
                 >
                   Отмена
                 </button>
@@ -2602,8 +2653,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
       {/* Edit Campaign Modal */}
       {showEditModal && editingCampaignIndex !== null && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-[600px] max-w-[90vw] max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white">Редактировать кампанию</h3>
               <button
@@ -2654,19 +2705,19 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     {editForm.watch('platforms').length === availablePlatforms.length ? 'Снять все' : 'Выбрать все'}
                   </button>
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-3">
+                <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-2 sm:p-3">
                   {availablePlatforms.map((platform) => (
                     <label
                       key={platform}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors"
+                      className="flex items-center gap-2 sm:gap-3 p-1.5 sm:p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors min-w-0"
                     >
                       <input
                         type="checkbox"
                         checked={editForm.watch('platforms').includes(platform)}
                         onChange={() => handleEditPlatformToggle(platform)}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2"
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 flex-shrink-0"
                       />
-                      <span className="text-white text-sm">{platform}</span>
+                      <span className="text-white text-xs sm:text-sm break-words min-w-0">{platform}</span>
                     </label>
                   ))}
                 </div>
@@ -2895,11 +2946,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <p className="text-gray-500 text-xs mt-2">Изображение для рекламных объявлений</p>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-2 sm:gap-3 mt-6 flex-wrap">
                 <button
                   type="submit"
                   disabled={editForm.formState.isSubmitting}
-                  className="flex-1 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 min-w-0 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
                   {editForm.formState.isSubmitting ? 'Сохранение...' : 'Сохранить изменения'}
                 </button>
@@ -2912,7 +2963,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     editForm.reset();
                     setEditingDescription('');
                   }}
-                  className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base flex-1 sm:flex-initial min-w-0"
                 >
                   Отмена
                 </button>

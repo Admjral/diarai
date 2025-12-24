@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle, Menu, X } from 'lucide-react';
 import { Screen } from '../App';
 import { useAuth } from '../contexts/AuthContext';
 import { userAPI } from '../lib/api';
@@ -14,6 +14,7 @@ interface SubscriptionProps {
 export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: SubscriptionProps) {
   const { user: supabaseUser } = useAuth();
   const [loading, setLoading] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handlePlanSelect = async (planName: string) => {
     // Преобразуем название плана в формат enum
@@ -138,7 +139,8 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
               <ArrowLeft className="w-5 h-5" />
             </button>
             <h1 className="text-white">Подписка</h1>
-            <div className="flex items-center gap-4 ml-auto">
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center gap-4 ml-auto">
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
@@ -146,6 +148,42 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                 <MessageCircle className="w-4 h-4" />
                 <span>Техподдержка</span>
               </button>
+            </div>
+            {/* Mobile burger menu */}
+            <div className="sm:hidden relative ml-auto">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5 text-white" />
+                ) : (
+                  <Menu className="w-5 h-5 text-white" />
+                )}
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('support');
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                      <span>Техподдержка</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -262,43 +300,43 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
             <h3 className="text-white">Сравнение возможностей</h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b border-slate-700">
-                  <th className="text-left p-4 text-gray-400">Функция</th>
-                  <th className="text-center p-4 text-gray-400">FREE</th>
-                  <th className="text-center p-4 text-gray-400">PRO</th>
-                  <th className="text-center p-4 text-gray-400">BUSINESS</th>
+                  <th className="text-left p-3 sm:p-4 text-gray-400 text-sm sm:text-base">Функция</th>
+                  <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">FREE</th>
+                  <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">PRO</th>
+                  <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">BUSINESS</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-b border-slate-700">
-                  <td className="p-4 text-gray-300">Клиенты в CRM</td>
-                  <td className="p-4 text-center text-gray-400">10</td>
-                  <td className="p-4 text-center text-gray-400">100</td>
-                  <td className="p-4 text-center text-green-400">Неограниченно</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Клиенты в CRM</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">10</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">100</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Неограниченно</td>
                 </tr>
                 <tr className="border-b border-slate-700">
-                  <td className="p-4 text-gray-300">Интеграции</td>
-                  <td className="p-4 text-center text-gray-400">1</td>
-                  <td className="p-4 text-center text-gray-400">5</td>
-                  <td className="p-4 text-center text-green-400">Все</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Интеграции</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">1</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">5</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Все</td>
                 </tr>
                 <tr className="border-b border-slate-700">
-                  <td className="p-4 text-gray-300">AI оптимизация рекламы</td>
-                  <td className="p-4 text-center text-gray-600">—</td>
-                  <td className="p-4 text-center text-green-400">
-                    <Check className="w-5 h-5 mx-auto" />
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">AI оптимизация рекламы</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-600 text-sm sm:text-base">—</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400">
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 mx-auto" />
                   </td>
-                  <td className="p-4 text-center text-green-400">
-                    <Check className="w-5 h-5 mx-auto" />
+                  <td className="p-3 sm:p-4 text-center text-green-400">
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 mx-auto" />
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-4 text-gray-300">Поддержка</td>
-                  <td className="p-4 text-center text-gray-400">Email</td>
-                  <td className="p-4 text-center text-gray-400">Приоритет</td>
-                  <td className="p-4 text-center text-green-400">VIP 24/7</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Поддержка</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Email</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Приоритет</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">VIP 24/7</td>
                 </tr>
               </tbody>
             </table>

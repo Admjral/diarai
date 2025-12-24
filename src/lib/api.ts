@@ -315,6 +315,7 @@ export interface UserProfile {
   email: string;
   name: string;
   plan: 'Free' | 'Pro' | 'Business';
+  role?: 'user' | 'admin';
   createdAt: string;
   updatedAt: string;
 }
@@ -431,5 +432,179 @@ export const supportAPI = {
     request<{ message: string }>(`/api/support/${id}`, {
       method: 'DELETE',
     }),
+};
+
+// API для админ-панели
+export interface AdminStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalCampaigns: number;
+  activeCampaigns: number;
+  totalLeads: number;
+  totalDeals: number;
+  revenue: number;
+  totalWallets: number;
+  totalBalance: number;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  name: string;
+  plan: 'Free' | 'Pro' | 'Business';
+  role: 'user' | 'admin';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignWithUser {
+  id: number;
+  name: string;
+  platforms: string[];
+  status: string;
+  budget: string;
+  spent: string;
+  conversions: number;
+  imageUrl: string | null;
+  audience: any;
+  user: {
+    email: string;
+    name: string;
+  } | null;
+}
+
+export interface WalletWithUser {
+  id: number;
+  userId: number;
+  balance: string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    email: string;
+    name: string;
+  } | null;
+}
+
+export const adminAPI = {
+  getStats: () => request<AdminStats>('/api/admin/stats'),
+  getAllUsers: () => request<AdminUser[]>('/api/admin/users'),
+  updateUserPlan: (userId: number, plan: 'Free' | 'Pro' | 'Business') =>
+    request<AdminUser & { message: string }>(`/api/admin/users/${userId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan }),
+    }),
+  updateUserRole: (userId: number, role: 'user' | 'admin') =>
+    request<AdminUser & { message: string }>(`/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    }),
+  getAllCampaigns: () => request<CampaignWithUser[]>('/api/admin/campaigns'),
+  toggleCampaign: (campaignId: number, status: 'Активна' | 'На паузе' | 'На проверке') =>
+    request<CampaignWithUser & { message: string }>(`/api/admin/campaigns/${campaignId}/toggle`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
+  exportLeads: async () => {
+    const url = `${API_BASE_URL}/api/admin/export/leads`;
+    const headers = await getHeaders();
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) throw new APIError('Ошибка экспорта лидов', response.status);
+    return await response.blob();
+  },
+  exportClients: async () => {
+    const url = `${API_BASE_URL}/api/admin/export/clients`;
+    const headers = await getHeaders();
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) throw new APIError('Ошибка экспорта клиентов', response.status);
+    return await response.blob();
+  },
+  exportCampaignsStats: async () => {
+    const url = `${API_BASE_URL}/api/admin/export/campaigns`;
+    const headers = await getHeaders();
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) throw new APIError('Ошибка экспорта статистики кампаний', response.status);
+    return await response.blob();
+  },
+  getAllWallets: () => request<WalletWithUser[]>('/api/admin/wallets'),
+  addFunds: (userId: number, amount: number, note?: string) =>
+    request<WalletWithUser & { message: string; note?: string }>(`/api/admin/wallets/${userId}/add`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, note }),
+    }),
+  withdrawFunds: (userId: number, amount: number, note?: string) =>
+    request<WalletWithUser & { message: string; note?: string }>(`/api/admin/wallets/${userId}/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, note }),
+    }),
+  setBalance: (userId: number, balance: number, note?: string) =>
+    request<WalletWithUser & { message: string; note?: string }>(`/api/admin/wallets/${userId}/balance`, {
+      method: 'PUT',
+      body: JSON.stringify({ balance, note }),
+    }),
+  importLeads: async (userId: number, file: File) => {
+    const url = `${API_BASE_URL}/api/admin/import/leads/${userId}`;
+    const headers = await getHeaders();
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Удаляем Content-Type из headers, чтобы браузер установил его с boundary
+    const { 'Content-Type': _, ...headersWithoutContentType } = headers as any;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headersWithoutContentType,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new APIError(error.error || 'Ошибка импорта лидов', response.status);
+    }
+    
+    return await response.json();
+  },
+  importClients: async (userId: number, file: File) => {
+    const url = `${API_BASE_URL}/api/admin/import/clients/${userId}`;
+    const headers = await getHeaders();
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const { 'Content-Type': _, ...headersWithoutContentType } = headers as any;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headersWithoutContentType,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new APIError(error.error || 'Ошибка импорта клиентов', response.status);
+    }
+    
+    return await response.json();
+  },
+  importCampaignsStats: async (userId: number, file: File) => {
+    const url = `${API_BASE_URL}/api/admin/import/campaigns/${userId}`;
+    const headers = await getHeaders();
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const { 'Content-Type': _, ...headersWithoutContentType } = headers as any;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headersWithoutContentType,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new APIError(error.error || 'Ошибка импорта статистики кампаний', response.status);
+    }
+    
+    return await response.json();
+  },
 };
 

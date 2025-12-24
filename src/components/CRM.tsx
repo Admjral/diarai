@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Users, UserPlus, Target, CheckSquare, MessageSquare, Phone, Mail, MoreVertical, Send, Search, X, Edit, Trash2, Plus, Calendar, DollarSign, AlertCircle, Filter, Save, ArrowUpDown, TrendingUp, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Target, CheckSquare, MessageSquare, Phone, Mail, MoreVertical, Send, Search, X, Edit, Trash2, Plus, Calendar, DollarSign, AlertCircle, Filter, Save, ArrowUpDown, TrendingUp, Clock, Loader2, Menu } from 'lucide-react';
 import { Screen } from '../App';
 import { leadsAPI, dealsAPI, tasksAPI } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -143,6 +143,7 @@ function TaskItem({
 export function CRM({ onNavigate, showToast }: CRMProps) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('leads');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -849,8 +850,8 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <h1 className="text-white">CRM</h1>
-            {/* Статистика */}
-            <div className="flex items-center gap-4 ml-auto">
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center gap-4 ml-auto">
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
@@ -899,18 +900,92 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                 </div>
               )}
             </div>
+            {/* Mobile burger menu */}
+            <div className="sm:hidden relative ml-auto">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5 text-white" />
+                ) : (
+                  <Menu className="w-5 h-5 text-white" />
+                )}
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('support');
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <MessageSquare className="w-5 h-5" />
+                      <span>Техподдержка</span>
+                    </button>
+                    {activeTab === 'leads' && (
+                      <div className="px-4 py-3 border-t border-slate-700">
+                        <p className="text-gray-400 text-xs mb-1">Всего лидов</p>
+                        <p className="text-white font-semibold">{stats.totalLeads}</p>
+                      </div>
+                    )}
+                    {activeTab === 'deals' && (
+                      <div className="px-4 py-3 border-t border-slate-700 space-y-2">
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">Активных сделок</p>
+                          <p className="text-white font-semibold">{stats.activeDeals}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">Общая сумма</p>
+                          <p className="text-white font-semibold flex items-center gap-1">
+                            <DollarSign className="w-4 h-4" />
+                            {stats.totalAmount.toLocaleString()} KZT
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {activeTab === 'tasks' && (
+                      <div className="px-4 py-3 border-t border-slate-700 space-y-2">
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">Активных задач</p>
+                          <p className="text-white font-semibold">{stats.pendingTasks}</p>
+                        </div>
+                        {overdueTasks.length > 0 && (
+                          <div>
+                            <p className="text-gray-400 text-xs mb-1">Просрочено</p>
+                            <p className="text-red-400 font-semibold flex items-center gap-1">
+                              <AlertCircle className="w-4 h-4" />
+                              {overdueTasks.length}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
-        <div className="flex gap-2 mb-8 overflow-x-auto">
+        <div className="flex gap-2 mb-8 overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-xl flex items-center gap-2 whitespace-nowrap transition-colors relative ${
+              className={`px-4 sm:px-6 py-2 sm:py-3 rounded-xl flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-colors relative flex-shrink-0 text-sm sm:text-base ${
                 activeTab === tab.id
                   ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
                   : 'bg-slate-800/50 border border-slate-700 text-gray-400 hover:text-white'
@@ -932,75 +1007,77 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         {/* Search and Filters */}
         {activeTab !== 'chat' && (
           <div className="mb-6 space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="relative max-w-md flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+              <div className="relative w-full sm:max-w-md sm:flex-1">
+                <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Поиск..."
-                  className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
+                  className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors text-sm sm:text-base"
                 />
               </div>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`px-4 py-3 rounded-xl flex items-center gap-2 transition-colors ${
-                  showFilters || statusFilter !== 'all' || priorityFilter !== 'all'
-                    ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
-                    : 'bg-slate-800/50 border border-slate-700 text-gray-400 hover:text-white'
-                }`}
-              >
-                <Filter className="w-5 h-5" />
-                Фильтры
-              </button>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm">Сортировка:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
-                >
-                  <option value="date">По дате</option>
-                  <option value="name">По имени</option>
-                  {activeTab === 'deals' && <option value="amount">По сумме</option>}
-                  <option value="status">По статусу</option>
-                </select>
+              <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                 <button
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors"
-                  title={sortOrder === 'asc' ? 'По возрастанию' : 'По убыванию'}
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`px-3 sm:px-4 py-2 sm:py-3 rounded-xl flex items-center justify-center gap-2 transition-colors flex-1 sm:flex-initial min-w-0 ${
+                    showFilters || statusFilter !== 'all' || priorityFilter !== 'all'
+                      ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
+                      : 'bg-slate-800/50 border border-slate-700 text-gray-400 hover:text-white'
+                  }`}
                 >
-                  <ArrowUpDown className="w-4 h-4" />
+                  <Filter className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm whitespace-nowrap">Фильтры</span>
                 </button>
+                <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
+                  <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0 hidden sm:inline">Сортировка:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="bg-slate-800/50 border border-slate-700 rounded-lg px-2 sm:px-3 py-2 text-white text-xs sm:text-sm focus:outline-none focus:border-yellow-500/50 flex-1 sm:flex-initial min-w-0"
+                  >
+                    <option value="date">По дате</option>
+                    <option value="name">По имени</option>
+                    {activeTab === 'deals' && <option value="amount">По сумме</option>}
+                    <option value="status">По статусу</option>
+                  </select>
+                  <button
+                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                    className="px-2 sm:px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                    title={sortOrder === 'asc' ? 'По возрастанию' : 'По убыванию'}
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                  </button>
+                </div>
+                {activeTab === 'leads' && (
+                  <button
+                    onClick={() => setShowAddLeadModal(true)}
+                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
+                  >
+                    <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm">Добавить лид</span>
+                  </button>
+                )}
+                {activeTab === 'deals' && (
+                  <button
+                    onClick={() => setShowAddDealModal(true)}
+                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
+                  >
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm">Создать сделку</span>
+                  </button>
+                )}
+                {activeTab === 'tasks' && (
+                  <button
+                    onClick={() => setShowAddTaskModal(true)}
+                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
+                  >
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm">Создать задачу</span>
+                  </button>
+                )}
               </div>
-            {activeTab === 'leads' && (
-              <button
-                onClick={() => setShowAddLeadModal(true)}
-                className="px-4 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 whitespace-nowrap"
-              >
-                <UserPlus className="w-5 h-5" />
-                Добавить лид
-              </button>
-            )}
-            {activeTab === 'deals' && (
-              <button
-                onClick={() => setShowAddDealModal(true)}
-                className="px-4 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-5 h-5" />
-                Создать сделку
-              </button>
-            )}
-            {activeTab === 'tasks' && (
-              <button
-                onClick={() => setShowAddTaskModal(true)}
-                className="px-4 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-5 h-5" />
-                Создать задачу
-              </button>
-            )}
             </div>
             
             {/* Filters Panel */}
@@ -1074,7 +1151,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         {/* Content */}
 
         {activeTab === 'chat' && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden h-[600px] flex flex-col">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden h-[400px] sm:h-[500px] md:h-[600px] flex flex-col">
             {!selectedLead ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-gray-400">

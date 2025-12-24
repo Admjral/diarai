@@ -19,6 +19,7 @@ export async function getUserProfile(req: Request, res: Response) {
         email: true,
         name: true,
         plan: true,
+        role: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -49,6 +50,7 @@ export async function getUserProfile(req: Request, res: Response) {
       email: user.email,
       name: user.name,
       plan: user.plan,
+      role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

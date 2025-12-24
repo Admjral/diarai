@@ -29,7 +29,7 @@ export const Toast = memo(function Toast({ message, type, onClose }: ToastProps)
   }), []);
 
   return (
-    <div className={`fixed top-4 right-4 z-[100] bg-gradient-to-r ${backgrounds[type]} border backdrop-blur-sm rounded-xl p-4 shadow-lg animate-in slide-in-from-top-5 min-w-[300px]`}>
+    <div className={`fixed top-4 right-4 left-4 sm:left-auto sm:min-w-[300px] z-[100] bg-gradient-to-r ${backgrounds[type]} border backdrop-blur-sm rounded-xl p-4 shadow-lg animate-in slide-in-from-top-5 max-w-sm sm:max-w-none`}>
       <div className="flex items-center gap-3">
         {icons[type]}
         <p className="text-white flex-1">{message}</p>

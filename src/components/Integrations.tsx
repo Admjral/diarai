@@ -1,4 +1,4 @@
-import { ArrowLeft, MessageCircle, Send, Users, Check, ExternalLink, Instagram } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Send, Users, Check, ExternalLink, Instagram, Menu, X } from 'lucide-react';
 import { Screen } from '../App';
 import { useState } from 'react';
 
@@ -9,6 +9,7 @@ interface IntegrationsProps {
 
 export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
   const [connectedIntegrations, setConnectedIntegrations] = useState<string[]>(['WhatsApp Business']);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleConnect = (name: string) => {
     if (connectedIntegrations.includes(name)) {
@@ -60,7 +61,8 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <h1 className="text-white">Интеграции</h1>
-            <div className="flex items-center gap-4 ml-auto">
+            {/* Desktop menu */}
+            <div className="hidden sm:flex items-center gap-2 sm:gap-4 ml-auto">
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
@@ -68,6 +70,42 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
                 <MessageCircle className="w-4 h-4" />
                 <span>Техподдержка</span>
               </button>
+            </div>
+            {/* Mobile burger menu */}
+            <div className="sm:hidden relative ml-auto">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5 text-white" />
+                ) : (
+                  <Menu className="w-5 h-5 text-white" />
+                )}
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('support');
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                      <span>Техподдержка</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -126,6 +126,20 @@
 
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+
+  html {
+    overflow-x: hidden;
+  }
+
+  /* Предотвращение горизонтального скролла на мобильных устройствах */
+  @media (max-width: 640px) {
+    body {
+      position: relative;
+      width: 100%;
+      max-width: 100vw;
+    }
   }
 }
 

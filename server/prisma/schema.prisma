@@ -13,6 +13,7 @@ model User {
   name      String
   password  String
   plan      Plan     @default(Free)
+  role      Role     @default(user)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -161,6 +162,11 @@ enum Plan {
   Free
   Pro
   Business
+}
+
+enum Role {
+  user
+  admin
 }
 
 enum TaskPriority {

@@ -179,7 +179,7 @@ export class CampaignsController {
         userId,
         name,
         platform: platformString, // Для обратной совместимости
-        status: status || 'Активна',
+        status: status || 'На проверке',
         budget: budgetNum,
         spent: spentNum,
         conversions: conversions || 0,

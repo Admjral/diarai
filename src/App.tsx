@@ -25,8 +25,11 @@ const Subscription = lazy(() =>
 const Support = lazy(() => 
   import('./components/Support').then(module => ({ default: module.Support }))
 );
+const AdminPanel = lazy(() => 
+  import('./components/AdminPanel').then(module => ({ default: module.AdminPanel }))
+);
 
-export type Screen = 'onboarding' | 'login' | 'dashboard' | 'crm' | 'ai-advertising' | 'integrations' | 'subscription' | 'support';
+export type Screen = 'onboarding' | 'login' | 'dashboard' | 'crm' | 'ai-advertising' | 'integrations' | 'subscription' | 'support' | 'admin';
 
 export type ToastType = {
   message: string;
@@ -37,7 +40,7 @@ export default function App() {
   const { user: supabaseUser, loading } = useAuth();
   const { isConnected, isChecking, error: connectionError, checkConnection } = useServerConnection();
   const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
-  const [user, setUser] = useState<{ name: string; plan: 'Free' | 'Pro' | 'Business' } | null>(null);
+  const [user, setUser] = useState<{ name: string; plan: 'Free' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
 
   useEffect(() => {
@@ -77,6 +80,7 @@ export default function App() {
               setUser({
                 name: profile.name,
                 plan: profile.plan,
+                role: profile.role,
               });
             } else {
               // Fallback если email отсутствует
@@ -193,6 +197,12 @@ export default function App() {
             <Support onNavigate={handleNavigate} showToast={showToast} />
           </Suspense>
         );
+      case 'admin':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <AdminPanel onNavigate={handleNavigate} showToast={showToast} />
+          </Suspense>
+        );
       default:
         return <Dashboard user={user} onNavigate={handleNavigate} showToast={showToast} />;
     }
@@ -227,7 +237,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white overflow-x-hidden w-full max-w-full">
       {renderScreen}
       {toast && (
         <Toast
