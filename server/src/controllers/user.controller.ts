@@ -25,14 +25,14 @@ export async function getUserProfile(req: Request, res: Response) {
       },
     });
 
-    // Если пользователь не найден, создаем нового с планом Free
+    // Если пользователь не найден, создаем нового с планом Start
     if (!user) {
       user = await prisma.user.create({
         data: {
           email: userEmail,
           name: userEmail.split('@')[0] || 'Пользователь',
           password: '', // В реальном приложении пароль хранится в Supabase
-          plan: Plan.Free,
+          plan: Plan.Start,
           role: Role.user,
         },
         select: {
@@ -115,8 +115,8 @@ export async function updateUserPlan(req: Request, res: Response) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
-    if (!plan || !['Free', 'Pro', 'Business'].includes(plan)) {
-      return res.status(400).json({ error: 'Неверный план подписки. Допустимые значения: Free, Pro, Business' });
+    if (!plan || !['Start', 'Pro', 'Business'].includes(plan)) {
+      return res.status(400).json({ error: 'Неверный план подписки. Допустимые значения: Start, Pro, Business' });
     }
 
     // Ищем пользователя по email

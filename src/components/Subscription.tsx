@@ -7,10 +7,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 const KASPI_LINK = 'https://pay.kaspi.kz/pay/7wfg2vrb';
 
 interface SubscriptionProps {
-  user: { name: string; plan: 'Free' | 'Pro' | 'Business' } | null;
+  user: { name: string; plan: 'Start' | 'Pro' | 'Business' } | null;
   onNavigate: (screen: Screen) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-  onPlanUpdate?: (plan: 'Free' | 'Pro' | 'Business') => void;
+  onPlanUpdate?: (plan: 'Start' | 'Pro' | 'Business') => void;
 }
 
 export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: SubscriptionProps) {
@@ -71,8 +71,8 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
 
   const handlePlanSelect = async (planName: string) => {
     // Преобразуем название плана в формат enum
-    const planMap: Record<string, 'Free' | 'Pro' | 'Business'> = {
-      'FREE': 'Free',
+    const planMap: Record<string, 'Start' | 'Pro' | 'Business'> = {
+      'START': 'Start',
       'PRO': 'Pro',
       'BUSINESS': 'Business',
     };
@@ -88,24 +88,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
       return;
     }
 
-    // Для бесплатного плана просто обновляем
-    if (plan === 'Free') {
-      setLoading(planName);
-      try {
-        const updatedProfile = await userAPI.updatePlan(plan);
-        if (onPlanUpdate) {
-          onPlanUpdate(updatedProfile.plan);
-        }
-        showToast(t.subscription.planChangedToFree, 'success');
-      } catch (error: any) {
-        showToast(error.message || t.subscription.planUpdateError, 'error');
-      } finally {
-        setLoading(null);
-      }
-      return;
-    }
-
-    // Для платных планов показываем выбор способа оплаты
+    // Все планы платные - показываем выбор способа оплаты
     setSelectedPlan(planName);
     setShowPaymentMethod(planName);
   };
@@ -113,12 +96,13 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
   const handlePaymentMethod = async (paymentMethod: 'wallet' | 'kaspi') => {
     if (!selectedPlan) return;
 
-    const planMap: Record<string, 'Pro' | 'Business'> = {
+    const planMap: Record<string, 'Start' | 'Pro' | 'Business'> = {
+      'START': 'Start',
       'PRO': 'Pro',
       'BUSINESS': 'Business',
     };
 
-    const plan = planMap[selectedPlan] as 'Pro' | 'Business';
+    const plan = planMap[selectedPlan] as 'Start' | 'Pro' | 'Business';
     if (!plan) {
       showToast(t.subscription.invalidPlan, 'error');
       return;
@@ -172,7 +156,8 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
   const handleKaspiConfirm = async () => {
     if (!showKaspiConfirm) return;
 
-    const planMap: Record<string, 'Pro' | 'Business'> = {
+    const planMap: Record<string, 'Start' | 'Pro' | 'Business'> = {
+      'START': 'Start',
       'PRO': 'Pro',
       'BUSINESS': 'Business',
     };
@@ -194,56 +179,68 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
       setLoading(null);
     }
   };
+  // Цены планов
+  const PLAN_PRICES = {
+    START: 50000,
+    PRO: 120000,
+    BUSINESS: 250000,
+  };
+
   const plans = [
     {
-      name: 'FREE',
-      price: '₸0',
-      period: t.subscription.forever,
+      name: 'START',
+      price: '₸50,000',
+      period: t.subscription.perMonth,
+      description: 'Для запуска одной рекламной кампании',
       icon: <Sparkles className="w-8 h-8" />,
       gradient: 'from-gray-600 to-gray-800',
       features: [
-        { text: t.subscription.features.upTo10Clients, included: true },
-        { text: t.subscription.features.basicAnalytics, included: true },
-        { text: t.subscription.features.oneIntegration, included: true },
-        { text: t.subscription.features.emailSupport, included: true },
-        { text: t.subscription.features.aiOptimization, included: false },
-        { text: t.subscription.features.prioritySupport, included: false },
-        { text: t.subscription.features.brandedReports, included: false },
+        { text: '1 рекламная кампания', included: true },
+        { text: 'Неограниченное количество клиентов в CRM', included: true },
+        { text: 'Базовая аналитика', included: true },
+        { text: '1 интеграция', included: true },
+        { text: 'AI-оптимизация рекламы (базовая)', included: true },
+        { text: 'Email-поддержка', included: true },
+        { text: 'Брендированные отчёты', included: true },
       ],
-      current: user?.plan === 'Free',
+      current: user?.plan === 'Start',
     },
     {
       name: 'PRO',
-      price: '₸9,900',
+      price: '₸120,000',
       period: t.subscription.perMonth,
+      description: 'Для активного привлечения клиентов и масштабирования',
       icon: <Zap className="w-8 h-8" />,
       gradient: 'from-blue-500 to-purple-600',
       popular: true,
       features: [
-        { text: t.subscription.features.upTo100Clients, included: true },
-        { text: t.subscription.features.advancedAnalytics, included: true },
-        { text: t.subscription.features.fiveIntegrations, included: true },
-        { text: t.subscription.features.aiOptimization, included: true },
-        { text: t.subscription.features.chatbots, included: true },
-        { text: t.subscription.features.prioritySupport, included: true },
-        { text: t.subscription.features.brandedReports, included: false },
+        { text: 'До 5 рекламных кампаний', included: true },
+        { text: 'Неограниченное количество клиентов в CRM', included: true },
+        { text: 'Расширенная аналитика', included: true },
+        { text: 'До 5 интеграций', included: true },
+        { text: 'Полная AI-оптимизация рекламы', included: true },
+        { text: 'Чат-боты для Instagram и Telegram', included: true },
+        { text: 'Приоритетная поддержка', included: true },
+        { text: 'Брендированные отчёты', included: true },
       ],
       current: user?.plan === 'Pro',
     },
     {
       name: 'BUSINESS',
-      price: '₸24,900',
+      price: '₸250,000',
       period: t.subscription.perMonth,
+      description: 'Для агентств и компаний с большим объёмом рекламы',
       icon: <Crown className="w-8 h-8" />,
       gradient: 'from-yellow-400 to-amber-600',
       features: [
-        { text: t.subscription.features.unlimitedClients, included: true },
-        { text: t.subscription.features.fullAnalytics, included: true },
-        { text: t.subscription.features.allIntegrations, included: true },
-        { text: t.subscription.features.aiOptimization, included: true },
-        { text: t.subscription.features.multichannelChatbots, included: true },
-        { text: t.subscription.features.vipSupport, included: true },
-        { text: t.subscription.features.brandedReports, included: true },
+        { text: 'Неограниченное количество рекламных кампаний', included: true },
+        { text: 'Неограниченное количество клиентов в CRM', included: true },
+        { text: 'Полная аналитика + BI', included: true },
+        { text: 'Все интеграции', included: true },
+        { text: 'Продвинутая AI-оптимизация рекламы', included: true },
+        { text: 'Мультиканальные чат-боты (Instagram, Telegram, WhatsApp и др.)', included: true },
+        { text: 'VIP-поддержка 24/7', included: true },
+        { text: 'Полностью брендированные отчёты', included: true },
       ],
       current: user?.plan === 'Business',
     },
@@ -353,7 +350,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                 <h3 className="text-white mb-2">Оплата через Kaspi</h3>
                 <p className="text-gray-400 mb-4">
                   Переведите <span className="text-white font-medium">
-                    ₸{showKaspiConfirm === 'PRO' ? '9,900' : '24,900'}
+                    ₸{showKaspiConfirm === 'START' ? '50,000' : showKaspiConfirm === 'PRO' ? '120,000' : '250,000'}
                   </span> по ссылке Kaspi и нажмите "Я оплатил" для активации подписки.
                 </p>
                 <div className="flex flex-wrap gap-3">
@@ -477,7 +474,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                   </div>
                   <button
                     onClick={() => handlePaymentMethod('wallet')}
-                    disabled={loading === plan.name || (walletBalance !== null && plan.name === 'PRO' && walletBalance < 9900) || (walletBalance !== null && plan.name === 'BUSINESS' && walletBalance < 24900)}
+                    disabled={loading === plan.name || (walletBalance !== null && plan.name === 'START' && walletBalance < PLAN_PRICES.START) || (walletBalance !== null && plan.name === 'PRO' && walletBalance < PLAN_PRICES.PRO) || (walletBalance !== null && plan.name === 'BUSINESS' && walletBalance < PLAN_PRICES.BUSINESS)}
                     className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading === plan.name ? (
@@ -527,8 +524,6 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                 >
                   {loading === plan.name
                     ? t.subscription.updating
-                    : plan.name === 'FREE'
-                    ? t.subscription.startFree
                     : t.subscription.subscribe}
                 </button>
               )}
@@ -546,33 +541,41 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
               <thead>
                 <tr className="border-b border-slate-700">
                   <th className="text-left p-3 sm:p-4 text-gray-400 text-sm sm:text-base">{t.subscription.feature}</th>
-                  <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">FREE</th>
+                  <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">START</th>
                   <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">PRO</th>
                   <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">BUSINESS</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-b border-slate-700">
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Рекламные кампании</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">1</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">До 5</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.unlimited}</td>
+                </tr>
+                <tr className="border-b border-slate-700">
                   <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.clientsInCRM}</td>
-                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">10</td>
-                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">100</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.unlimited}</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.unlimited}</td>
                   <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.unlimited}</td>
                 </tr>
                 <tr className="border-b border-slate-700">
                   <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.integrations}</td>
                   <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">1</td>
-                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">5</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">До 5</td>
                   <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.all}</td>
                 </tr>
                 <tr className="border-b border-slate-700">
                   <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.aiOptimization}</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Базовая</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Полная</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Продвинутая</td>
+                </tr>
+                <tr className="border-b border-slate-700">
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Чат-боты</td>
                   <td className="p-3 sm:p-4 text-center text-gray-600 text-sm sm:text-base">—</td>
-                  <td className="p-3 sm:p-4 text-center text-green-400">
-                    <Check className="w-4 h-4 sm:w-5 sm:h-5 mx-auto" />
-                  </td>
-                  <td className="p-3 sm:p-4 text-center text-green-400">
-                    <Check className="w-4 h-4 sm:w-5 sm:h-5 mx-auto" />
-                  </td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Instagram, Telegram</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Все каналы</td>
                 </tr>
                 <tr>
                   <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.supportType}</td>

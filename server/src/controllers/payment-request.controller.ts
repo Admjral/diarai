@@ -2,10 +2,11 @@ import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
 import { Plan, Role, PaymentRequestStatus } from '@prisma/client';
 
-// Цены планов
+// Цены планов (в тенге)
 const PLAN_PRICES: Record<string, number> = {
-  Pro: 9900,
-  Business: 24900,
+  Start: 50000,
+  Pro: 120000,
+  Business: 250000,
 };
 
 // Проверка, является ли пользователь админом
@@ -44,8 +45,8 @@ export async function createPaymentRequest(req: Request, res: Response) {
     }
 
     // Валидация плана
-    if (!plan || !['Pro', 'Business'].includes(plan)) {
-      return res.status(400).json({ error: 'Выберите план Pro или Business' });
+    if (!plan || !['Start', 'Pro', 'Business'].includes(plan)) {
+      return res.status(400).json({ error: 'Выберите план Start, Pro или Business' });
     }
 
     const userId = await getUserIdByEmail(userEmail);

@@ -80,7 +80,7 @@ export const register = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         name: name || email.split('@')[0],
-        plan: 'Free',
+        plan: 'Start',
         role: 'user',
       },
     });

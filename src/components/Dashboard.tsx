@@ -8,7 +8,7 @@ import { Wallet } from './Wallet';
 import { dashboardAPI, type DashboardStats, notificationsAPI } from '../lib/api';
 
 interface DashboardProps {
-  user: { name: string; plan: 'Free' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null;
+  user: { name: string; plan: 'Start' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null;
   onNavigate: (screen: Screen) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -206,9 +206,11 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
               <button
                 onClick={handleNavigateToSubscription}
                 className={`px-4 py-2 rounded-lg flex-shrink-0 ${
-                  user?.plan === 'Free'
-                    ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
-                    : 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
+                  user?.plan === 'Start'
+                    ? 'bg-gradient-to-r from-gray-600 to-gray-800 text-white'
+                    : user?.plan === 'Pro'
+                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                    : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black'
                 }`}
               >
                 {user?.plan}
@@ -372,9 +374,11 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
                         handleNavigateToSubscription();
                       }}
                       className={`w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 ${
-                        user?.plan === 'Free'
-                          ? 'text-yellow-400'
-                          : 'text-purple-400'
+                        user?.plan === 'Start'
+                          ? 'text-gray-400'
+                          : user?.plan === 'Pro'
+                          ? 'text-purple-400'
+                          : 'text-yellow-400'
                       }`}
                     >
                       <span className="font-semibold">{user?.plan}</span>

@@ -368,7 +368,7 @@ export interface UserProfile {
   id: number;
   email: string;
   name: string;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: 'Start' | 'Pro' | 'Business';
   role?: 'user' | 'admin';
   createdAt: string;
   updatedAt: string;
@@ -377,7 +377,7 @@ export interface UserProfile {
 export const userAPI = {
   getProfile: () => 
     requestWithAuthTimeout<UserProfile>('/api/user/profile'),
-  updatePlan: (plan: 'Free' | 'Pro' | 'Business') => 
+  updatePlan: (plan: 'Start' | 'Pro' | 'Business') => 
     request<UserProfile & { message: string }>('/api/user/plan', {
       method: 'PUT',
       body: JSON.stringify({ plan }),
@@ -535,7 +535,7 @@ export interface AdminUser {
   id: number;
   email: string;
   name: string;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: 'Start' | 'Pro' | 'Business';
   role: 'user' | 'admin';
   createdAt: string;
   updatedAt: string;
@@ -574,7 +574,7 @@ export interface WalletWithUser {
 export interface Payment {
   id: number;
   userId: number;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: 'Start' | 'Pro' | 'Business';
   amount: string;
   currency: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'refunded';
@@ -634,7 +634,7 @@ export const paymentAPI = {
 export const adminAPI = {
   getStats: () => request<AdminStats>('/api/admin/stats'),
   getAllUsers: () => request<AdminUser[]>('/api/admin/users'),
-  updateUserPlan: (userId: number, plan: 'Free' | 'Pro' | 'Business') =>
+  updateUserPlan: (userId: number, plan: 'Start' | 'Pro' | 'Business') =>
     request<AdminUser & { message: string }>(`/api/admin/users/${userId}/plan`, {
       method: 'PUT',
       body: JSON.stringify({ plan }),
@@ -1145,7 +1145,7 @@ export const messengerAPI = {
 export interface PaymentRequest {
   id: number;
   userId: number;
-  plan: 'Pro' | 'Business';
+  plan: 'Start' | 'Pro' | 'Business';
   amount: number;
   status: 'pending' | 'approved' | 'rejected';
   note?: string;
@@ -1163,7 +1163,7 @@ export interface PaymentRequest {
 
 export const paymentRequestAPI = {
   // Клиентские методы
-  create: (plan: 'Pro' | 'Business', note?: string) =>
+  create: (plan: 'Start' | 'Pro' | 'Business', note?: string) =>
     request<PaymentRequest>('/api/payment-requests', {
       method: 'POST',
       body: JSON.stringify({ plan, note }),

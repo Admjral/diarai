@@ -13,7 +13,7 @@ model User {
   email                 String    @unique
   name                  String
   password              String
-  plan                  Plan      @default(Free)
+  plan                  Plan      @default(Start)
   role                  Role      @default(user)
   subscriptionExpiresAt DateTime?
   subscriptionAutoRenew Boolean   @default(true)
@@ -197,7 +197,7 @@ enum MessageSender {
 }
 
 enum Plan {
-  Free
+  Start
   Pro
   Business
 }

@@ -113,7 +113,7 @@ export async function processMonthlySubscriptions() {
           await prisma.user.update({
             where: { id: user.id },
             data: {
-              plan: Plan.Free,
+              plan: Plan.Start,
               subscriptionExpiresAt: null,
             },
           });
@@ -195,7 +195,7 @@ export async function checkSubscriptionExpiry() {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        plan: Plan.Free,
+        plan: Plan.Start,
         subscriptionExpiresAt: null,
       },
     });

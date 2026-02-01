@@ -2,7 +2,7 @@ import { prisma, ensureConnection } from '../db/prisma';
 
 /**
  * Получает userId (Int) из базы данных по email пользователя
- * Если пользователь не найден, создает нового с планом Free
+ * Если пользователь не найден, создает нового с планом Start
  */
 export async function getUserIdByEmail(userEmail: string): Promise<number> {
   if (!userEmail || typeof userEmail !== 'string' || userEmail.trim() === '') {
@@ -34,7 +34,7 @@ export async function getUserIdByEmail(userEmail: string): Promise<number> {
             email: trimmedEmail,
             name: trimmedEmail.split('@')[0] || 'Пользователь',
             password: '', // В реальном приложении пароль хранится в Supabase
-            plan: 'Free',
+            plan: 'Start',
           },
           select: { id: true },
         });

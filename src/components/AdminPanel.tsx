@@ -27,7 +27,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   
   // Фильтры и поиск
   const [userSearch, setUserSearch] = useState('');
-  const [userPlanFilter, setUserPlanFilter] = useState<'all' | 'Free' | 'Pro' | 'Business'>('all');
+  const [userPlanFilter, setUserPlanFilter] = useState<'all' | 'Start' | 'Pro' | 'Business'>('all');
   const [campaignSearch, setCampaignSearch] = useState('');
   
   // Модальное окно для операций с кошельком
@@ -163,7 +163,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   }, [activeTab, loadStats, loadUsers, loadCampaigns, loadWallets, loadPaymentRequests]);
 
   // Обновление плана пользователя
-  const handleUpdatePlan = useCallback(async (userId: number, plan: 'Free' | 'Pro' | 'Business') => {
+  const handleUpdatePlan = useCallback(async (userId: number, plan: 'Start' | 'Pro' | 'Business') => {
     try {
       await adminAPI.updateUserPlan(userId, plan);
       showToast(t.adminPanel.planUpdated, 'success');
@@ -698,7 +698,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     className="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
                   >
                     <option value="all">Все планы</option>
-                    <option value="Free">Free</option>
+                    <option value="Start">Start</option>
                     <option value="Pro">Pro</option>
                     <option value="Business">Business</option>
                   </select>
@@ -726,7 +726,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                               onChange={(e) => handleUpdatePlan(user.id, e.target.value as any)}
                               className="px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-yellow-400"
                             >
-                              <option value="Free">Free</option>
+                              <option value="Start">Start</option>
                               <option value="Pro">Pro</option>
                               <option value="Business">Business</option>
                             </select>

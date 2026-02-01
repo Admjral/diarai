@@ -53,7 +53,7 @@ export async function updateUserPlan(req: Request, res: Response) {
     const { userId } = req.params;
     const { plan } = req.body;
 
-    if (!plan || !['Free', 'Pro', 'Business'].includes(plan)) {
+    if (!plan || !['Start', 'Pro', 'Business'].includes(plan)) {
       return res.status(400).json({ error: 'Неверный план подписки' });
     }
 
@@ -217,7 +217,7 @@ export async function getAdminStats(req: Request, res: Response) {
       totalBalance,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.user.count({ where: { plan: { not: 'Free' } } }),
+      prisma.user.count({ where: { plan: { not: 'Start' } } }),
       prisma.campaign.count(),
       prisma.campaign.count({ where: { status: 'Активна' } }),
       prisma.lead.count(),

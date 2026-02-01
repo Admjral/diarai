@@ -203,7 +203,7 @@ export const updateCampaignSchema = createCampaignSchema.partial();
 
 // Схема валидации для обновления плана пользователя
 export const updatePlanSchema = z.object({
-  plan: z.enum(['Free', 'Pro', 'Business']),
+  plan: z.enum(['Start', 'Pro', 'Business']),
 });
 
 // Схема валидации для пополнения кошелька

@@ -94,7 +94,7 @@ export function PaymentHistory({ showToast }: PaymentHistoryProps) {
 
   const getPlanText = (plan: Payment['plan']) => {
     const planMap: Record<Payment['plan'], string> = {
-      Free: 'Free',
+      Start: 'Start',
       Pro: 'Pro',
       Business: 'Business',
     };

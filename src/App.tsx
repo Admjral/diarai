@@ -31,7 +31,7 @@ function AppContent() {
   const { isConnected, isChecking, error: connectionError, checkConnection } = useServerConnection();
   const { t } = useLanguage();
   const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
-  const [user, setUser] = useState<{ name: string; plan: 'Free' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null>(null);
+  const [user, setUser] = useState<{ name: string; plan: 'Start' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
@@ -63,7 +63,7 @@ function AppContent() {
             const fallbackName = authUser.name || authUser.email?.split('@')[0] || t.dashboard.user;
             setUser({
               name: fallbackName,
-              plan: (authUser.plan as 'Free' | 'Pro' | 'Business') || 'Free',
+              plan: (authUser.plan as 'Start' | 'Pro' | 'Business') || 'Start',
               role: authUser.role as 'user' | 'admin',
             });
             // Показываем сообщение даже при ошибке
@@ -95,7 +95,7 @@ function AppContent() {
     setCurrentScreen(screen);
   }, []);
 
-  const handlePlanUpdate = useCallback((plan: 'Free' | 'Pro' | 'Business') => {
+  const handlePlanUpdate = useCallback((plan: 'Start' | 'Pro' | 'Business') => {
     if (user) {
       setUser({ ...user, plan });
     }
