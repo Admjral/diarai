@@ -1,29 +1,35 @@
-import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Users, UserPlus, Target, CheckSquare, MessageSquare, Phone, Mail, MoreVertical, Send, Search, X, Edit, Trash2, Plus, Calendar, DollarSign, AlertCircle, Filter, Save, ArrowUpDown, TrendingUp, Clock, Loader2, Menu } from 'lucide-react';
-import { Screen } from '../App';
-import { leadsAPI, dealsAPI, tasksAPI } from '../lib/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Users, UserPlus, Target, CheckSquare, MessageSquare, Phone, Mail, MoreVertical, Send, Search, X, Edit, Trash2, Plus, Calendar, DollarSign, AlertCircle, Filter, Save, ArrowUpDown, TrendingUp, Clock, Loader2, Menu, Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
+import type { Screen } from '../types';
+import { leadsAPI, dealsAPI, tasksAPI, campaignsAPI, exportAPI, type ExportFormat } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { getCache, setCache, cacheKeys } from '../lib/cache';
 import { LeadListSkeleton, DealListSkeleton, TaskListSkeleton } from './SkeletonLoaders';
 import { ConfirmDialog } from './ConfirmDialog';
-// Временно отключено до установки зависимостей: npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
-// import {
-//   DndContext,
-//   closestCenter,
-//   KeyboardSensor,
-//   PointerSensor,
-//   useSensor,
-//   useSensors,
-//   DragEndEvent,
-// } from '@dnd-kit/core';
-// import {
-//   arrayMove,
-//   SortableContext,
-//   sortableKeyboardCoordinates,
-//   useSortable,
-//   verticalListSortingStrategy,
-// } from '@dnd-kit/sortable';
-// import { CSS } from '@dnd-kit/utilities';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CRMProps {
   onNavigate: (screen: Screen) => void;
@@ -40,7 +46,7 @@ interface Message {
   isAI: boolean;
 }
 
-// Компонент для задачи (drag & drop временно отключен)
+// Компонент для задачи с поддержкой drag & drop
 interface TaskItemProps {
   task: any;
   onTaskClick: (taskId: string) => void;
@@ -51,6 +57,7 @@ interface TaskItemProps {
   getStatusColor: (status: string) => string;
   handleQuickStatusChange: (type: 'task', id: string, status: string) => void;
   formatDate: (date: string) => string;
+  t: typeof import('../lib/translations').translations['🇷🇺 RU'];
 }
 
 function TaskItem({
@@ -63,18 +70,40 @@ function TaskItem({
   getStatusColor,
   handleQuickStatusChange,
   formatDate,
-}: TaskItemProps) {
+  t,
+}: TaskItemProps & { t: typeof import('../lib/translations').translations['🇷🇺 RU'] }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
       onClick={() => onTaskClick(task.id)}
-      className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 hover:border-yellow-500/50 transition-all cursor-pointer hover:scale-[1.02]"
+      className={`bg-slate-800/50 border border-slate-700 rounded-2xl p-6 hover:border-yellow-500/50 transition-all cursor-grab active:cursor-grabbing ${
+        isDragging ? 'opacity-50' : 'hover:scale-[1.02]'
+      }`}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2 flex-wrap">
             <h3 className="text-white">{task.title}</h3>
             <span className={`px-2 py-1 rounded-lg text-xs ${getPriorityColor(task.priority)}`}>
-              {task.priority === 'low' ? 'Низкий' : task.priority === 'medium' ? 'Средний' : task.priority === 'high' ? 'Высокий' : task.priority === 'urgent' ? 'Срочный' : task.priority}
+              {task.priority === 'low' ? t.crm.priority.low : task.priority === 'medium' ? t.crm.priority.medium : task.priority === 'high' ? t.crm.priority.high : task.priority === 'urgent' ? t.crm.priority.urgent : task.priority}
             </span>
             <select
               value={task.status}
@@ -85,17 +114,17 @@ function TaskItem({
               onClick={(e) => e.stopPropagation()}
               className={`px-2 py-1 rounded-lg text-xs border-0 cursor-pointer ${getStatusColor(task.status)}`}
             >
-              <option value="todo">Новая</option>
-              <option value="in_progress">В работе</option>
-              <option value="done">Выполнена</option>
-              <option value="cancelled">Отменена</option>
+              <option value="todo">{t.crm.taskStatus.todo}</option>
+              <option value="in_progress">{t.crm.taskStatus.inProgress}</option>
+              <option value="done">{t.crm.taskStatus.done}</option>
+              <option value="cancelled">{t.crm.taskStatus.cancelled}</option>
             </select>
           </div>
           {task.description && (
             <p className="text-gray-400 text-sm mb-2">{task.description}</p>
           )}
           {task.lead && (
-            <p className="text-gray-500 text-sm">Связано с: {task.lead.name}</p>
+            <p className="text-gray-500 text-sm">{t.crm.relatedTo} {task.lead.name}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -129,7 +158,7 @@ function TaskItem({
         {task.dueDate && (
           <div className="flex items-center gap-2 text-gray-400">
             <Calendar className="w-4 h-4" />
-            <span>Срок: {formatDate(task.dueDate)}</span>
+            <span>{t.crm.dueDate} {formatDate(task.dueDate)}</span>
             {new Date(task.dueDate) < new Date() && task.status !== 'done' && (
               <AlertCircle className="w-4 h-4 text-red-400" />
             )}
@@ -141,6 +170,7 @@ function TaskItem({
 }
 
 export function CRM({ onNavigate, showToast }: CRMProps) {
+  const { t } = useLanguage();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('leads');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -160,19 +190,20 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   const [stats, setStats] = useState({ totalLeads: 0, activeDeals: 0, pendingTasks: 0, totalAmount: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Sensors для drag & drop (временно отключено)
-  // const sensors = useSensors(
-  //   useSensor(PointerSensor),
-  //   useSensor(KeyboardSensor, {
-  //     coordinateGetter: sortableKeyboardCoordinates,
-  //   })
-  // );
+  // Sensors для drag & drop
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
   // Данные из API
   const [leads, setLeads] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -196,9 +227,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     phone: '',
     email: '',
     status: 'new',
-    stage: 'Первый контакт',
+    stage: t.crm.placeholders.firstContact,
     source: '',
     notes: '',
+    campaignId: null as number | null,
   });
   
   const [newDeal, setNewDeal] = useState({
@@ -221,29 +253,34 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     leadId: '',
   });
   
-  // Загрузка данных при монтировании и смене вкладки
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user, activeTab]);
-  
-  // Загрузка лидов при открытии модальных окон для выбора
-  useEffect(() => {
-    if ((showAddDealModal || showAddTaskModal) && leads.length === 0) {
-      // Проверяем кэш сначала
-      const cached = getCache<any[]>(cacheKeys.leads);
-      if (cached) {
-        setLeads(cached);
-      } else {
-        leadsAPI.getAll().then(data => {
-          setLeads(data);
-          setCache(cacheKeys.leads, data);
-        }).catch(() => {});
-      }
-    }
-  }, [showAddDealModal, showAddTaskModal]);
-  
+  // Определяем функции загрузки ДО их использования в useEffect
+  const loadLeadsFromAPI = async () => {
+    const leadsData = await leadsAPI.getAll();
+    setLeads(leadsData);
+    setCache(cacheKeys.leads, leadsData);
+    setStats(prev => ({ ...prev, totalLeads: leadsData.length }));
+    setLoading(false);
+  };
+
+  const loadDealsFromAPI = async () => {
+    const dealsData = await dealsAPI.getAll();
+    setDeals(dealsData);
+    setCache(cacheKeys.deals, dealsData);
+    const activeDeals = dealsData.filter((d: any) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
+    const totalAmount = dealsData.reduce((sum: number, d: any) => sum + (parseFloat(d.amount) || 0), 0);
+    setStats(prev => ({ ...prev, activeDeals, totalAmount }));
+    setLoading(false);
+  };
+
+  const loadTasksFromAPI = async () => {
+    const tasksData = await tasksAPI.getAll();
+    setTasks(tasksData);
+    setCache(cacheKeys.tasks, tasksData);
+    const pendingTasks = tasksData.filter((t: any) => t.status !== 'done' && t.status !== 'cancelled').length;
+    setStats(prev => ({ ...prev, pendingTasks }));
+    setLoading(false);
+  };
+
   const loadData = async (useCache = true) => {
     setLoading(true);
     try {
@@ -323,37 +360,55 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
           return;
         }
       }
-      showToast(error.message || 'Ошибка загрузки данных', 'error');
+      showToast(error.message || t.crm.errors.loadData, 'error');
       setLoading(false);
     }
   };
 
-  const loadLeadsFromAPI = async () => {
-    const leadsData = await leadsAPI.getAll();
-    setLeads(leadsData);
-    setCache(cacheKeys.leads, leadsData);
-    setStats(prev => ({ ...prev, totalLeads: leadsData.length }));
-    setLoading(false);
+  const loadMessages = async (leadId: string) => {
+    try {
+      const lead = await leadsAPI.getById(leadId);
+      if (lead && lead.messages) {
+        const formattedMessages: Message[] = lead.messages.map((msg: any) => ({
+          id: msg.id || Date.now().toString(),
+          sender: msg.sender === 'client' ? 'client' : 'me',
+          text: msg.text || msg.content || '',
+          time: new Date(msg.createdAt || msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isAI: msg.isAI || msg.sender === 'ai' || msg.sender === 'assistant' || false,
+        }));
+        setMessages(formattedMessages);
+      } else {
+        setMessages([]);
+      }
+    } catch (error: any) {
+      console.error('Ошибка загрузки сообщений:', error);
+      showToast(error.message || t.crm.errors.loadMessages, 'error');
+      setMessages([]);
+    }
   };
 
-  const loadDealsFromAPI = async () => {
-    const dealsData = await dealsAPI.getAll();
-    setDeals(dealsData);
-    setCache(cacheKeys.deals, dealsData);
-    const activeDeals = dealsData.filter((d: any) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
-    const totalAmount = dealsData.reduce((sum: number, d: any) => sum + (parseFloat(d.amount) || 0), 0);
-    setStats(prev => ({ ...prev, activeDeals, totalAmount }));
-    setLoading(false);
-  };
-
-  const loadTasksFromAPI = async () => {
-    const tasksData = await tasksAPI.getAll();
-    setTasks(tasksData);
-    setCache(cacheKeys.tasks, tasksData);
-    const pendingTasks = tasksData.filter((t: any) => t.status !== 'done' && t.status !== 'cancelled').length;
-    setStats(prev => ({ ...prev, pendingTasks }));
-    setLoading(false);
-  };
+  // Загрузка лидов при открытии модальных окон для выбора
+  useEffect(() => {
+    if ((showAddDealModal || showAddTaskModal) && leads.length === 0) {
+      // Проверяем кэш сначала
+      const cached = getCache<any[]>(cacheKeys.leads);
+      if (cached) {
+        setLeads(cached);
+      } else {
+        leadsAPI.getAll().then(data => {
+          setLeads(data);
+          setCache(cacheKeys.leads, data);
+        }).catch(() => {});
+      }
+    }
+  }, [showAddDealModal, showAddTaskModal]);
+  
+  // Загрузка данных при монтировании и смене вкладки
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user, activeTab]);
   
   // Загрузка сообщений для выбранного лида
   useEffect(() => {
@@ -363,10 +418,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   }, [selectedLead, activeTab]);
 
   const tabs = [
-    { id: 'leads' as Tab, label: 'Лиды', icon: <UserPlus className="w-4 h-4" />, count: leads.length },
-    { id: 'deals' as Tab, label: 'Сделки', icon: <Target className="w-4 h-4" />, count: deals.length },
-    { id: 'tasks' as Tab, label: 'Задачи', icon: <CheckSquare className="w-4 h-4" />, count: tasks.length },
-    { id: 'chat' as Tab, label: 'Чат', icon: <MessageSquare className="w-4 h-4" />, count: null },
+    { id: 'leads' as Tab, label: t.crm.leads, icon: <UserPlus className="w-4 h-4" />, count: leads.length },
+    { id: 'deals' as Tab, label: t.crm.deals, icon: <Target className="w-4 h-4" />, count: deals.length },
+    { id: 'tasks' as Tab, label: t.crm.tasks, icon: <CheckSquare className="w-4 h-4" />, count: tasks.length },
+    { id: 'chat' as Tab, label: t.crm.chat, icon: <MessageSquare className="w-4 h-4" />, count: null },
   ];
   
   // Загрузка заметок при выборе лида
@@ -383,24 +438,6 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  const loadMessages = async (leadId: string) => {
-    try {
-      const lead = await leadsAPI.getById(leadId);
-      if (lead.messages) {
-        const formattedMessages: Message[] = lead.messages.map((msg: any) => ({
-          id: msg.id,
-          sender: msg.sender === 'client' ? 'client' : 'me',
-          text: msg.text,
-          time: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAI: msg.isAI || false,
-        }));
-        setMessages(formattedMessages);
-      }
-    } catch (error: any) {
-      showToast(error.message || 'Ошибка загрузки сообщений', 'error');
-    }
-  };
   
   const handleSendMessage = async () => {
     if (!message.trim() || !selectedLead) return;
@@ -417,9 +454,9 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
       };
       setMessages([...messages, newMessage]);
       setMessage('');
-      showToast('Сообщение отправлено', 'success');
+      showToast(t.crm.messageSent, 'success');
     } catch (error: any) {
-      showToast(error.message || 'Ошибка отправки сообщения', 'error');
+      showToast(error.message || t.crm.errors.sendMessage, 'error');
     } finally {
       setIsSendingMessage(false);
     }
@@ -427,14 +464,14 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
 
   const handleAddLead = async () => {
     if (!newLead.name || !newLead.phone || !newLead.email) {
-      showToast('Заполните все обязательные поля', 'error');
+      showToast(t.crm.fillRequiredFields, 'error');
       return;
     }
     
     // Валидация email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newLead.email)) {
-      showToast('Введите корректный email адрес', 'error');
+      showToast(t.crm.errors.invalidEmail, 'error');
       return;
     }
     
@@ -442,6 +479,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     try {
       await leadsAPI.create({
         ...newLead,
+        campaignId: newLead.campaignId || null,
         // Устанавливаем lastAction при создании
         lastAction: new Date().toISOString()
       });
@@ -451,14 +489,15 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         phone: '',
         email: '',
         status: 'new',
-        stage: 'Первый контакт',
+        stage: t.crm.defaultStage,
         source: '',
         notes: '',
+        campaignId: null,
       });
-      showToast('Лид успешно добавлен', 'success');
+      showToast(t.crm.success.leadAdded, 'success');
       loadData(false); // Перезагружаем данные без кэша
     } catch (error: any) {
-      showToast(error.message || 'Ошибка создания лида', 'error');
+      showToast(error.message || t.crm.errors.createLead, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -467,7 +506,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   const handleAddDeal = async () => {
     // Строгая проверка поля name
     if (!newDeal.name || typeof newDeal.name !== 'string' || newDeal.name.trim() === '') {
-      showToast('Заполните название сделки', 'error');
+      showToast(t.crm.errors.fillDealName, 'error');
       return;
     }
     
@@ -477,14 +516,31 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
       const selectedLead = leads.find(l => l.id.toString() === newDeal.leadId);
       const clientName = selectedLead ? selectedLead.name : (newDeal.clientName || newDeal.name.trim());
       
+      // Валидация и нормализация probability (0-100)
+      let probabilityValue = 0;
+      if (newDeal.probability) {
+        const parsed = parseInt(newDeal.probability.toString(), 10);
+        probabilityValue = Math.max(0, Math.min(100, parsed)); // Ограничиваем от 0 до 100
+      }
+
+      // Преобразование expectedCloseDate в ISO формат, если указана
+      let expectedCloseDateValue: string | null = null;
+      if (newDeal.expectedCloseDate && newDeal.expectedCloseDate.trim() !== '') {
+        // Если это дата в формате YYYY-MM-DD, преобразуем в ISO
+        const date = new Date(newDeal.expectedCloseDate);
+        if (!isNaN(date.getTime())) {
+          expectedCloseDateValue = date.toISOString();
+        }
+      }
+
       const dealData: any = {
         name: newDeal.name.trim(),
         amount: newDeal.amount ? parseFloat(newDeal.amount.toString()) : 0,
         currency: newDeal.currency || '₸',
         stage: newDeal.stage || 'lead',
-        probability: newDeal.probability ? parseInt(newDeal.probability.toString(), 10) : 0,
-        expectedCloseDate: newDeal.expectedCloseDate || null,
-        notes: newDeal.notes || null,
+        probability: probabilityValue,
+        expectedCloseDate: expectedCloseDateValue,
+        notes: newDeal.notes && newDeal.notes.trim() !== '' ? newDeal.notes.trim() : null,
         clientId: newDeal.leadId ? parseInt(newDeal.leadId.toString(), 10) : null,
       };
       
@@ -507,10 +563,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         notes: '',
         leadId: '',
       });
-      showToast('Сделка успешно создана', 'success');
+      showToast(t.crm.success.dealAdded, 'success');
       loadData(false); // Перезагружаем данные без кэша
     } catch (error: any) {
-      showToast(error.message || 'Ошибка создания сделки', 'error');
+      showToast(error.message || t.crm.errors.createDeal, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -518,20 +574,45 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   
   const handleAddTask = async () => {
     if (!newTask.title) {
-      showToast('Заполните название задачи', 'error');
+      showToast(t.crm.errors.fillTaskName, 'error');
       return;
     }
     
     setIsSaving(true);
     try {
-      await tasksAPI.create({
-        title: newTask.title,
-        description: newTask.description || null,
-        status: newTask.status,
-        priority: newTask.priority,
-        dueDate: newTask.dueDate || null,
-        clientId: newTask.leadId ? parseInt(newTask.leadId.toString(), 10) : null,
-      });
+      // Преобразование dueDate в ISO формат, если указана
+      let dueDateValue: string | null = null;
+      if (newTask.dueDate && newTask.dueDate.trim() !== '') {
+        // Если это дата в формате YYYY-MM-DD, преобразуем в ISO
+        // Добавляем время для корректного парсинга (полночь UTC)
+        const dateStr = newTask.dueDate.trim();
+        const date = new Date(dateStr + 'T00:00:00.000Z');
+        if (!isNaN(date.getTime())) {
+          dueDateValue = date.toISOString();
+        }
+      }
+
+      // Валидация clientId - должен быть положительным числом или null
+      let clientIdValue: number | null = null;
+      if (newTask.leadId) {
+        const parsed = parseInt(newTask.leadId.toString(), 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          clientIdValue = parsed;
+        }
+      }
+
+      const taskData: any = {
+        title: newTask.title.trim(),
+        description: newTask.description && newTask.description.trim() !== '' ? newTask.description.trim() : null,
+        status: newTask.status || 'todo',
+        priority: newTask.priority || 'medium',
+        dueDate: dueDateValue,
+        clientId: clientIdValue,
+      };
+
+      console.log('Отправка данных задачи:', taskData);
+
+      await tasksAPI.create(taskData);
       setShowAddTaskModal(false);
       setNewTask({
         title: '',
@@ -541,10 +622,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         dueDate: '',
         leadId: '',
       });
-      showToast('Задача успешно создана', 'success');
+      showToast(t.crm.success.taskAdded, 'success');
       loadData(false); // Перезагружаем данные без кэша
     } catch (error: any) {
-      showToast(error.message || 'Ошибка создания задачи', 'error');
+      showToast(error.message || t.crm.errors.createTask, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -555,13 +636,13 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     let itemName = '';
     if (type === 'lead') {
       const lead = leads.find(l => String(l.id) === idString);
-      itemName = lead?.name || 'этот лид';
+      itemName = lead?.name || t.crm.leads.toLowerCase();
     } else if (type === 'deal') {
       const deal = deals.find(d => String(d.id) === idString);
-      itemName = deal?.name || 'эту сделку';
+      itemName = deal?.name || t.crm.deals.toLowerCase();
     } else if (type === 'task') {
       const task = tasks.find(t => String(t.id) === idString);
-      itemName = task?.title || 'эту задачу';
+      itemName = task?.title || t.crm.tasks.toLowerCase();
     }
     
     setItemToDelete({ type, id: idString, name: itemName });
@@ -577,20 +658,20 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     try {
       if (type === 'lead') {
         await leadsAPI.delete(id);
-        showToast('Лид удален', 'success');
+        showToast(t.crm.success.leadDeleted, 'success');
         if (selectedLead === id || String(selectedLead) === id) setSelectedLead(null);
       } else if (type === 'deal') {
         await dealsAPI.delete(id);
-        showToast('Сделка удалена', 'success');
+        showToast(t.crm.success.dealDeleted, 'success');
       } else if (type === 'task') {
         await tasksAPI.delete(id);
-        showToast('Задача удалена', 'success');
+        showToast(t.crm.success.taskDeleted, 'success');
       }
       loadData(false); // Перезагружаем данные без кэша
       setDeleteConfirmOpen(false);
       setItemToDelete(null);
     } catch (error: any) {
-      showToast(error.message || 'Ошибка удаления', 'error');
+      showToast(error.message || t.crm.errors.delete, 'error');
     } finally {
       setIsDeleting(null);
     }
@@ -599,76 +680,78 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
   const handleUpdateLead = async (id: string, data: any) => {
     try {
       await leadsAPI.update(id, data);
-      showToast('Лид обновлен', 'success');
+      showToast(t.crm.success.leadUpdated, 'success');
       loadData(false); // Перезагружаем данные без кэша
       setShowEditModal(false);
       setEditingItem(null);
     } catch (error: any) {
-      showToast(error.message || 'Ошибка обновления', 'error');
+      showToast(error.message || t.crm.errors.update, 'error');
     }
   };
   
   const handleUpdateDeal = async (id: string, data: any) => {
     try {
       await dealsAPI.update(id, data);
-      showToast('Сделка обновлена', 'success');
+      showToast(t.crm.success.dealUpdated, 'success');
       loadData(false); // Перезагружаем данные без кэша
       setShowEditModal(false);
       setEditingItem(null);
     } catch (error: any) {
-      showToast(error.message || 'Ошибка обновления', 'error');
+      showToast(error.message || t.crm.errors.update, 'error');
     }
   };
   
   const handleUpdateTask = async (id: string, data: any) => {
     try {
       await tasksAPI.update(id, data);
-      showToast('Задача обновлена', 'success');
+      showToast(t.crm.success.taskUpdated, 'success');
       loadData(false); // Перезагружаем данные без кэша
       setShowEditModal(false);
       setEditingItem(null);
     } catch (error: any) {
-      showToast(error.message || 'Ошибка обновления', 'error');
+      showToast(error.message || t.crm.errors.update, 'error');
     }
   };
 
-  // Обработчик завершения перетаскивания задачи (временно отключено)
-  // const handleDragEnd = async (event: DragEndEvent) => {
-  //   const { active, over } = event;
+  // Обработчик завершения перетаскивания задачи
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
 
-  //   if (over && active.id !== over.id) {
-  //     const oldIndex = paginatedTasks.findIndex((task) => task.id === active.id);
-  //     const newIndex = paginatedTasks.findIndex((task) => task.id === over.id);
+    if (over && active.id !== over.id) {
+      const oldIndex = paginatedTasks.findIndex((task) => task.id === active.id);
+      const newIndex = paginatedTasks.findIndex((task) => task.id === over.id);
 
-  //     const newTasks = arrayMove(paginatedTasks, oldIndex, newIndex);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const newTasks = arrayMove(paginatedTasks, oldIndex, newIndex);
       
-  //     // Обновляем локальное состояние для мгновенного отклика
-  //     const allTasks = [...tasks];
-  //     const startIndex = (currentPage - 1) * itemsPerPage;
-  //     newTasks.forEach((task, index) => {
-  //       const globalIndex = startIndex + index;
-  //       if (allTasks[globalIndex]) {
-  //         allTasks[globalIndex] = task;
-  //       }
-  //     });
+      // Обновляем локальное состояние для мгновенного отклика
+      const allTasks = [...tasks];
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      newTasks.forEach((task, index) => {
+        const globalIndex = startIndex + index;
+        if (allTasks[globalIndex]) {
+          allTasks[globalIndex] = task;
+        }
+      });
       
-  //     setTasks(allTasks);
-  //     setCache(cacheKeys.tasks, allTasks);
+      setTasks(allTasks);
+      setCache(cacheKeys.tasks, allTasks);
       
-  //     // Опционально: можно сохранить порядок на сервере
-  //     // await tasksAPI.updateOrder(newTasks.map(t => t.id));
+      // Опционально: можно сохранить порядок на сервере
+      // await tasksAPI.updateOrder(newTasks.map(t => t.id));
       
-  //     showToast('Порядок задач обновлен', 'success');
-  //   }
-  // };
+      showToast(t.crm.success.tasksOrderUpdated, 'success');
+    }
+  };
   
   const handleSaveNotes = async (leadId: string) => {
     try {
       await leadsAPI.update(leadId, { notes: leadNotes[leadId] || '' });
-      showToast('Заметки сохранены', 'success');
+      showToast(t.crm.success.notesSaved, 'success');
       loadData(false); // Перезагружаем данные без кэша
     } catch (error: any) {
-      showToast(error.message || 'Ошибка сохранения', 'error');
+      showToast(error.message || t.crm.errors.save, 'error');
     }
   };
   
@@ -680,19 +763,19 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
           status: newStatus,
           lastAction: new Date().toISOString()
         });
-        showToast('Статус обновлен', 'success');
+        showToast(t.crm.success.statusUpdated, 'success');
       } else if (type === 'task') {
         await tasksAPI.update(id, { status: newStatus });
-        showToast('Статус обновлен', 'success');
+        showToast(t.crm.success.statusUpdated, 'success');
       }
       loadData(false); // Перезагружаем данные без кэша
     } catch (error: any) {
-      showToast(error.message || 'Ошибка обновления', 'error');
+      showToast(error.message || t.crm.errors.update, 'error');
     }
   };
   
   const formatDate = (date: string | Date | null) => {
-    if (!date) return 'Не указано';
+    if (!date) return t.crm.notSpecified;
     const d = new Date(date);
     return d.toLocaleDateString('ru-RU');
   };
@@ -704,17 +787,26 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
     
-    if (days > 0) return `${days} ${days === 1 ? 'день' : 'дней'} назад`;
-    if (hours > 0) return `${hours} ${hours === 1 ? 'час' : 'часов'} назад`;
-    return 'Только что';
+    if (days > 0) {
+      const daysText = days === 1 
+        ? t.crm.timeAgo.day 
+        : (days < 5 ? t.crm.timeAgo.days2to4 : t.crm.timeAgo.days);
+      return `${days} ${daysText}`;
+    }
+    if (hours > 0) {
+      const hoursText = hours === 1 
+        ? t.crm.timeAgo.hour 
+        : (hours < 5 ? t.crm.timeAgo.hours2to4 : t.crm.timeAgo.hours);
+      return `${hours} ${hoursText}`;
+    }
+    return t.crm.justNow;
   };
   
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
       'new': 'bg-blue-500/20 text-blue-400',
-      'Новый': 'bg-blue-500/20 text-blue-400',
       'contacted': 'bg-yellow-500/20 text-yellow-400',
-      'Активный': 'bg-green-500/20 text-green-400',
+      // 'Активный': 'bg-green-500/20 text-green-400', // Removed - using translation
       'qualified': 'bg-purple-500/20 text-purple-400',
       'converted': 'bg-green-500/20 text-green-400',
       'lost': 'bg-red-500/20 text-red-400',
@@ -849,20 +941,153 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-white">CRM</h1>
+            <h1 className="text-white">{t.crm.title}</h1>
             {/* Desktop menu */}
-            <div className="hidden sm:flex items-center gap-4 ml-auto">
+            <div className="flex items-center gap-2 sm:gap-4 ml-auto">
+              {/* Кнопка экспорта в заголовке - видна на всех устройствах */}
+              {activeTab !== 'chat' && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg"
+                      title={t.crm.exportData}
+                    >
+                      <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">{t.crm.export}</span>
+                      <ChevronDown className="w-3 h-3 hidden sm:inline" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 z-50">
+                    {activeTab === 'leads' && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportLeadsCSV, 'info');
+                              await exportAPI.exportLeads('csv', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.leadsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.exporting, 'info');
+                              await exportAPI.exportLeads('xlsx', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.exportSuccess, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.exportError, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {activeTab === 'deals' && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportDealsCSV, 'info');
+                              await exportAPI.exportDeals('csv', {
+                                stage: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.dealsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportDealsExcel, 'info');
+                              await exportAPI.exportDeals('xlsx', {
+                                stage: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.dealsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {activeTab === 'tasks' && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportTasksCSV, 'info');
+                              await exportAPI.exportTasks('csv', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                                priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+                              });
+                              showToast(t.crm.success.tasksExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportTasksExcel, 'info');
+                              await exportAPI.exportTasks('xlsx', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                                priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+                              });
+                              showToast(t.crm.success.tasksExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <button
                 onClick={() => onNavigate('support')}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>Техподдержка</span>
+                <span>{t.crm.support}</span>
               </button>
               {activeTab === 'leads' && (
                 <div className="hidden md:flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-gray-400 text-xs">Всего лидов</p>
+                    <p className="text-gray-400 text-xs">{t.crm.chatMessages.totalLeads}</p>
                     <p className="text-white font-semibold">{stats.totalLeads}</p>
                   </div>
                 </div>
@@ -922,6 +1147,58 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   />
                   {/* Menu */}
                   <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
+                    {/* Кнопка экспорта в мобильном меню */}
+                    {activeTab === 'leads' && (
+                      <div className="border-b border-slate-700">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3">
+                              <Download className="w-5 h-5" />
+                              <span>Экспорт лидов</span>
+                              <ChevronDown className="w-4 h-4 ml-auto" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 z-50">
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                setMobileMenuOpen(false);
+                                try {
+                                  showToast(t.crm.success.exportLeadsCSV, 'info');
+                                  await exportAPI.exportLeads('csv', {
+                                    status: statusFilter !== 'all' ? statusFilter : undefined,
+                                  });
+                                  showToast(t.crm.success.leadsExported, 'success');
+                                } catch (error: any) {
+                                  showToast(error.message || t.crm.errors.export, 'error');
+                                }
+                              }}
+                              className="cursor-pointer text-white hover:bg-slate-700"
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              {t.crm.exportCSV}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                setMobileMenuOpen(false);
+                                try {
+                                  showToast(t.crm.success.exportLeadsExcel, 'info');
+                                  await exportAPI.exportLeads('xlsx', {
+                                    status: statusFilter !== 'all' ? statusFilter : undefined,
+                                  });
+                                  showToast(t.crm.success.leadsExported, 'success');
+                                } catch (error: any) {
+                                  showToast(error.message || t.crm.errors.export, 'error');
+                                }
+                              }}
+                              className="cursor-pointer text-white hover:bg-slate-700"
+                            >
+                              <FileSpreadsheet className="w-4 h-4 mr-2" />
+                              {t.crm.exportExcel}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                     <button
                       onClick={() => {
                         setMobileMenuOpen(false);
@@ -930,7 +1207,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
                     >
                       <MessageSquare className="w-5 h-5" />
-                      <span>Техподдержка</span>
+                      <span>{t.crm.support}</span>
                     </button>
                     {activeTab === 'leads' && (
                       <div className="px-4 py-3 border-t border-slate-700">
@@ -1014,7 +1291,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Поиск..."
+                  placeholder={t.crm.search}
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors text-sm sm:text-base"
                 />
               </div>
@@ -1028,54 +1305,206 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   }`}
                 >
                   <Filter className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  <span className="text-xs sm:text-sm whitespace-nowrap">Фильтры</span>
+                  <span className="text-xs sm:text-sm whitespace-nowrap">{t.crm.filters}</span>
                 </button>
                 <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
-                  <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0 hidden sm:inline">Сортировка:</span>
+                  <span className="text-gray-400 text-xs sm:text-sm flex-shrink-0 hidden sm:inline">{t.crm.sortBy}</span>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                     className="bg-slate-800/50 border border-slate-700 rounded-lg px-2 sm:px-3 py-2 text-white text-xs sm:text-sm focus:outline-none focus:border-yellow-500/50 flex-1 sm:flex-initial min-w-0"
                   >
-                    <option value="date">По дате</option>
-                    <option value="name">По имени</option>
-                    {activeTab === 'deals' && <option value="amount">По сумме</option>}
-                    <option value="status">По статусу</option>
+                    <option value="date">{t.crm.sortByDate}</option>
+                    <option value="name">{t.crm.sortByName}</option>
+                    {activeTab === 'deals' && <option value="amount">{t.crm.sortByAmount}</option>}
+                    <option value="status">{t.crm.sortByStatus}</option>
                   </select>
                   <button
                     onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                     className="px-2 sm:px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors flex-shrink-0"
-                    title={sortOrder === 'asc' ? 'По возрастанию' : 'По убыванию'}
+                    title={sortOrder === 'asc' ? t.crm.sortAscending : t.crm.sortDescending}
                   >
                     <ArrowUpDown className="w-4 h-4" />
                   </button>
                 </div>
                 {activeTab === 'leads' && (
-                  <button
-                    onClick={() => setShowAddLeadModal(true)}
-                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
-                  >
-                    <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm">Добавить лид</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowAddLeadModal(true)}
+                      className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap flex-shrink-0"
+                    >
+                      <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm">{t.crm.addLead}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="px-3 sm:px-4 py-2 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg flex-shrink-0"
+                          title={t.crm.exportData}
+                        >
+                          <Download className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm font-medium">Экспорт</span>
+                          <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 z-50">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportLeadsCSV, 'info');
+                              await exportAPI.exportLeads('csv', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.leadsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportLeadsExcel, 'info');
+                              await exportAPI.exportLeads('xlsx', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.leadsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
                 )}
                 {activeTab === 'deals' && (
-                  <button
-                    onClick={() => setShowAddDealModal(true)}
-                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
-                  >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm">Создать сделку</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowAddDealModal(true)}
+                      className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
+                    >
+                      <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm">{t.crm.createDeal}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="px-3 sm:px-4 py-2 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg"
+                          title={t.crm.exportData}
+                        >
+                          <Download className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm font-medium">Экспорт</span>
+                          <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 z-50">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportDealsCSV, 'info');
+                              await exportAPI.exportDeals('csv', {
+                                stage: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.dealsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportDealsExcel, 'info');
+                              await exportAPI.exportDeals('xlsx', {
+                                stage: statusFilter !== 'all' ? statusFilter : undefined,
+                              });
+                              showToast(t.crm.success.dealsExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
                 )}
                 {activeTab === 'tasks' && (
-                  <button
-                    onClick={() => setShowAddTaskModal(true)}
-                    className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
-                  >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm">Создать задачу</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowAddTaskModal(true)}
+                      className="px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto flex-1 sm:flex-initial"
+                    >
+                      <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm">{t.crm.createTask}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="px-3 sm:px-4 py-2 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg"
+                          title={t.crm.exportData}
+                        >
+                          <Download className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm font-medium">Экспорт</span>
+                          <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 z-50">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportTasksCSV, 'info');
+                              await exportAPI.exportTasks('csv', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                                priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+                              });
+                              showToast(t.crm.success.tasksExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          {t.crm.exportCSV}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              showToast(t.crm.success.exportTasksExcel, 'info');
+                              await exportAPI.exportTasks('xlsx', {
+                                status: statusFilter !== 'all' ? statusFilter : undefined,
+                                priority: priorityFilter !== 'all' ? priorityFilter : undefined,
+                              });
+                              showToast(t.crm.success.tasksExported, 'success');
+                            } catch (error: any) {
+                              showToast(error.message || t.crm.errors.export, 'error');
+                            }
+                          }}
+                          className="cursor-pointer text-white hover:bg-slate-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          {t.crm.exportExcel}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
                 )}
               </div>
             </div>
@@ -1085,49 +1514,49 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex items-center gap-4 flex-wrap">
                 {activeTab === 'leads' && (
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400">Статус:</span>
+                    <span className="text-gray-400">{t.crm.filterLabels.status}</span>
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                       className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
                     >
-                      <option value="all">Все</option>
-                      <option value="new">Новый</option>
-                      <option value="contacted">Контакт</option>
-                      <option value="qualified">Квалифицирован</option>
-                      <option value="converted">Конвертирован</option>
-                      <option value="lost">Потерян</option>
+                      <option value="all">{t.crm.status.all}</option>
+                      <option value="new">{t.crm.status.new}</option>
+                      <option value="contacted">{t.crm.status.contact}</option>
+                      <option value="qualified">{t.crm.status.qualified}</option>
+                      <option value="converted">{t.crm.status.converted}</option>
+                      <option value="lost">{t.crm.status.lost}</option>
                     </select>
                   </div>
                 )}
                 {activeTab === 'tasks' && (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Статус:</span>
+                      <span className="text-gray-400">{t.crm.filterLabels.status}</span>
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                         className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
                       >
-                        <option value="all">Все</option>
-                        <option value="todo">Новая</option>
-                        <option value="in_progress">В работе</option>
-                        <option value="done">Выполнена</option>
-                        <option value="cancelled">Отменена</option>
+                        <option value="all">{t.crm.status.all}</option>
+                        <option value="todo">{t.crm.taskStatus.todo}</option>
+                        <option value="in_progress">{t.crm.taskStatus.inProgress}</option>
+                        <option value="done">{t.crm.taskStatus.done}</option>
+                        <option value="cancelled">{t.crm.taskStatus.cancelled}</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Приоритет:</span>
+                      <span className="text-gray-400">{t.crm.filterLabels.priority}</span>
                       <select
                         value={priorityFilter}
                         onChange={(e) => setPriorityFilter(e.target.value)}
                         className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
                       >
-                        <option value="all">Все</option>
-                        <option value="low">Низкий</option>
-                        <option value="medium">Средний</option>
-                        <option value="high">Высокий</option>
-                        <option value="urgent">Срочный</option>
+                        <option value="all">{t.crm.status.all}</option>
+                        <option value="low">{t.crm.priority.low}</option>
+                        <option value="medium">{t.crm.priority.medium}</option>
+                        <option value="high">{t.crm.priority.high}</option>
+                        <option value="urgent">{t.crm.priority.urgent}</option>
                       </select>
                     </div>
                   </>
@@ -1156,7 +1585,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-gray-400">
                   <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>Выберите лид из вкладки "Лиды" для начала общения</p>
+                    <p>{t.crm.chatMessages.selectLead}</p>
                   <button
                     onClick={() => setActiveTab('leads')}
                     className="mt-4 px-4 py-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow"
@@ -1180,7 +1609,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       <h3 className="text-white">
                         {(() => {
                           const lead = leads.find(l => l.id === selectedLead);
-                          return lead?.name || 'Лид';
+                          return lead?.name || t.crm.placeholders.lead;
                         })()}
                       </h3>
                       <p className="text-gray-400">онлайн</p>
@@ -1200,7 +1629,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center text-gray-400">
                     <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p>Нет сообщений. Начните общение!</p>
+                    <p>{t.crm.chatMessages.noMessages}</p>
                   </div>
                 </div>
               ) : (
@@ -1242,7 +1671,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Введите сообщение..."
+                  placeholder={t.crm.chatMessages.messagePlaceholder}
                   className="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
                 />
                 <button
@@ -1255,11 +1684,11 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   ) : (
                     <Send className="w-5 h-5" />
                   )}
-                  {isSendingMessage ? 'Отправка...' : 'Отправить'}
+                  {isSendingMessage ? t.crm.chatMessages.sending : t.crm.chatMessages.send}
                 </button>
               </div>
               <p className="text-gray-500 mt-2">
-                AI автоматически генерирует ответы на основе контекста
+                {t.crm.chatMessages.aiDescription}
               </p>
             </div>
               </>
@@ -1274,7 +1703,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
             ) : filteredLeads.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <UserPlus className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Нет лидов. Добавьте первый лид!</p>
+                <p>{t.crm.noLeads}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -1327,7 +1756,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <p className="text-gray-500 mb-1">Телефон</p>
+                          <p className="text-gray-500 mb-1">{t.crm.phone}</p>
                           <p className="text-gray-300">{lead.phone}</p>
                         </div>
                         <div>
@@ -1338,21 +1767,37 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                             onClick={(e) => e.stopPropagation()}
                             className={`px-3 py-1 rounded-lg text-sm border-0 cursor-pointer ${getStatusColor(lead.status)}`}
                           >
-                            <option value="new">Новый</option>
-                            <option value="contacted">Контакт</option>
-                            <option value="qualified">Квалифицирован</option>
-                            <option value="converted">Конвертирован</option>
-                            <option value="lost">Потерян</option>
+                            <option value="new">{t.crm.status.new}</option>
+                            <option value="contacted">{t.crm.status.contact}</option>
+                            <option value="qualified">{t.crm.status.qualified}</option>
+                            <option value="converted">{t.crm.status.converted}</option>
+                            <option value="lost">{t.crm.status.lost}</option>
                           </select>
                         </div>
                         <div>
-                          <p className="text-gray-500 mb-1">Этап</p>
-                          <p className="text-gray-300">{lead.stage || 'Первый контакт'}</p>
+                          <p className="text-gray-500 mb-1">{t.crm.stage}</p>
+                          <p className="text-gray-300">{lead.stage || t.crm.placeholders.firstContact}</p>
                         </div>
                         <div>
-                          <p className="text-gray-500 mb-1">Последнее действие</p>
-                          <p className="text-gray-300">{lead.lastAction ? formatTimeAgo(lead.lastAction) : 'Нет'}</p>
+                          <p className="text-gray-500 mb-1">{t.crm.lastAction}</p>
+                          <p className="text-gray-300">{lead.lastAction ? formatTimeAgo(lead.lastAction) : t.crm.none}</p>
                         </div>
+                        {lead.campaign && (
+                          <div className="col-span-2">
+                            <p className="text-gray-500 mb-1">{t.crm.campaign}</p>
+                            <div className="flex items-center gap-2">
+                              <Target className="w-4 h-4 text-yellow-400" />
+                              <p className="text-gray-300">{lead.campaign.name}</p>
+                              <span className={`px-2 py-1 rounded-lg text-xs ${
+                                lead.campaign.status === t.adminPanel.status.active ? 'bg-green-500/20 text-green-400' :
+                                lead.campaign.status === t.adminPanel.status.onReview ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-gray-500/20 text-gray-400'
+                              }`}>
+                                {lead.campaign.status}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1391,7 +1836,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
             ) : filteredDeals.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Target className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Нет сделок. Создайте первую сделку!</p>
+                <p>{t.crm.noDeals}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1448,8 +1893,8 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500">Этап</span>
-                        <span className="text-gray-300">{deal.stage || 'Новый'}</span>
+                        <span className="text-gray-500">{t.crm.stage}</span>
+                        <span className="text-gray-300">{deal.stage || t.crm.status.new}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-gray-500">Вероятность</span>
@@ -1502,41 +1947,53 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
             ) : filteredTasks.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <CheckSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Нет задач. Создайте первую задачу!</p>
+                <p>{t.crm.noTasks}</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Предупреждение о просроченных задачах */}
-                {overdueTasks.length > 0 && (
-                  <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-400" />
-                    <div>
-                      <p className="text-red-400 font-semibold">Просрочено задач: {overdueTasks.length}</p>
-                      <p className="text-gray-400 text-sm">Некоторые задачи требуют внимания</p>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="space-y-4">
+                  {/* Предупреждение о просроченных задачах */}
+                  {overdueTasks.length > 0 && (
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 flex items-center gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-400" />
+                      <div>
+                        <p className="text-red-400 font-semibold">Просрочено задач: {overdueTasks.length}</p>
+                        <p className="text-gray-400 text-sm">Некоторые задачи требуют внимания</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {paginatedTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onTaskClick={(taskId) => {
-                      setSelectedTask(taskId);
-                      setShowTaskDetailsModal(true);
-                    }}
-                    onEdit={(task) => {
-                      setEditingItem(task);
-                      setShowEditModal(true);
-                    }}
-                    onDelete={(taskId) => handleDeleteClick('task', taskId)}
-                    isDeleting={isDeleting}
-                    getPriorityColor={getPriorityColor}
-                    getStatusColor={getStatusColor}
-                    handleQuickStatusChange={handleQuickStatusChange}
-                    formatDate={formatDate}
-                  />
-                ))}
-              </div>
+                  )}
+                  <SortableContext
+                    items={paginatedTasks.map(task => task.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {paginatedTasks.map((task) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        onTaskClick={(taskId) => {
+                          setSelectedTask(taskId);
+                          setShowTaskDetailsModal(true);
+                        }}
+                        onEdit={(task) => {
+                          setEditingItem(task);
+                          setShowEditModal(true);
+                        }}
+                        onDelete={(taskId) => handleDeleteClick('task', taskId)}
+                        isDeleting={isDeleting}
+                        getPriorityColor={getPriorityColor}
+                        getStatusColor={getStatusColor}
+                        handleQuickStatusChange={handleQuickStatusChange}
+                        formatDate={formatDate}
+                        t={t}
+                      />
+                    ))}
+                  </SortableContext>
+                </div>
+              </DndContext>
             )}
             
             {/* Пагинация для задач */}
@@ -1570,7 +2027,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white">Добавить лид</h3>
+              <h3 className="text-white">{t.crm.addLead}</h3>
               <button
                 onClick={() => setShowAddLeadModal(false)}
                 className="text-gray-400 hover:text-white"
@@ -1587,12 +2044,12 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   value={newLead.name}
                   onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
-                  placeholder="Введите имя"
+                  placeholder={t.crm.enterName}
                 />
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Телефон *</p>
+                <p className="text-gray-500 mb-2">{t.crm.phone} *</p>
                 <input
                   type="text"
                   value={newLead.phone}
@@ -1603,7 +2060,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Email *</p>
+                <p className="text-gray-500 mb-2">{t.crm.email} *</p>
                 <input
                   type="email"
                   value={newLead.email}
@@ -1614,24 +2071,24 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Этап</p>
+                <p className="text-gray-500 mb-2">{t.crm.stage}</p>
                 <input
                   type="text"
                   value={newLead.stage}
                   onChange={(e) => setNewLead({ ...newLead, stage: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
-                  placeholder="Первый контакт"
+                  placeholder={t.crm.placeholders.firstContact}
                 />
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Источник</p>
+                <p className="text-gray-500 mb-2">{t.crm.source}</p>
                 <input
                   type="text"
                   value={newLead.source}
                   onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
-                  placeholder="Откуда пришел лид"
+                  placeholder={t.crm.leadSourcePlaceholder}
                 />
               </div>
 
@@ -1642,8 +2099,24 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                   rows={3}
-                  placeholder="Дополнительная информация"
+                  placeholder={t.crm.placeholders.additionalInfo}
                 />
+              </div>
+
+              <div>
+                <p className="text-gray-500 mb-2">{t.crm.campaign}</p>
+                <select
+                  value={newLead.campaignId || ''}
+                  onChange={(e) => setNewLead({ ...newLead, campaignId: e.target.value ? parseInt(e.target.value) : null })}
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
+                >
+                  <option value="">Не выбрано</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -1651,7 +2124,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               onClick={handleAddLead}
               className="w-full py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow mt-6"
             >
-              Добавить лид
+              {t.crm.addLead}
             </button>
           </div>
         </div>
@@ -1662,7 +2135,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white">Создать сделку</h3>
+              <h3 className="text-white">{t.crm.createDeal}</h3>
               <button
                 onClick={() => setShowAddDealModal(false)}
                 className="text-gray-400 hover:text-white"
@@ -1679,7 +2152,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   value={newDeal.name}
                   onChange={(e) => setNewDeal({ ...newDeal, name: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
-                  placeholder="Название сделки"
+                  placeholder={t.crm.placeholders.dealName}
                 />
               </div>
 
@@ -1715,13 +2188,17 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   min="0"
                   max="100"
                   value={newDeal.probability}
-                  onChange={(e) => setNewDeal({ ...newDeal, probability: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    const clampedValue = Math.max(0, Math.min(100, value)); // Ограничиваем от 0 до 100
+                    setNewDeal({ ...newDeal, probability: clampedValue });
+                  }}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
                 />
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Связанный лид</p>
+                <p className="text-gray-500 mb-2">{t.crm.relatedLead}</p>
                 <select
                   value={newDeal.leadId}
                   onChange={(e) => setNewDeal({ ...newDeal, leadId: e.target.value })}
@@ -1751,7 +2228,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   onChange={(e) => setNewDeal({ ...newDeal, notes: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                   rows={3}
-                  placeholder="Дополнительная информация"
+                  placeholder={t.crm.placeholders.additionalInfo}
                 />
               </div>
             </div>
@@ -1764,10 +2241,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               {isSaving ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Создание...
+                  {t.crm.creating}
                 </>
               ) : (
-                'Создать сделку'
+                t.crm.createDeal
               )}
             </button>
           </div>
@@ -1780,7 +2257,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
           <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white">
-                {editingItem.name || editingItem.title ? 'Редактировать' : 'Редактировать задачу'}
+                {editingItem.name || editingItem.title ? t.crm.edit : t.crm.editTask}
               </h3>
               <button
                 onClick={() => {
@@ -1806,7 +2283,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   />
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-2">Телефон *</p>
+                  <p className="text-gray-500 mb-2">{t.crm.phone} *</p>
                   <input
                     type="text"
                     defaultValue={editingItem.phone}
@@ -1815,7 +2292,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   />
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-2">Email *</p>
+                  <p className="text-gray-500 mb-2">{t.crm.email} *</p>
                   <input
                     type="email"
                     defaultValue={editingItem.email}
@@ -1830,7 +2307,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                     className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500/50"
                     id="edit-lead-status"
                   >
-                    <option value="new">Новый</option>
+                    <option value="new">{t.crm.placeholders.new}</option>
                     <option value="contacted">Контакт</option>
                     <option value="qualified">Квалифицирован</option>
                     <option value="converted">Конвертирован</option>
@@ -1838,13 +2315,28 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   </select>
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-2">Этап</p>
+                  <p className="text-gray-500 mb-2">{t.crm.stage}</p>
                   <input
                     type="text"
                     defaultValue={editingItem.stage}
                     className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500/50"
                     id="edit-lead-stage"
                   />
+                </div>
+                <div>
+                  <p className="text-gray-500 mb-2">{t.crm.campaign}</p>
+                  <select
+                    defaultValue={editingItem.campaignId || ''}
+                    className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500/50"
+                    id="edit-lead-campaignId"
+                  >
+                    <option value="">Не выбрано</option>
+                    {campaigns.map((campaign) => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <button
                   onClick={() => {
@@ -1853,7 +2345,8 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                     const email = (document.getElementById('edit-lead-email') as HTMLInputElement)?.value;
                     const status = (document.getElementById('edit-lead-status') as HTMLSelectElement)?.value;
                     const stage = (document.getElementById('edit-lead-stage') as HTMLInputElement)?.value;
-                    handleUpdateLead(editingItem.id, { name, phone, email, status, stage });
+                    const campaignId = (document.getElementById('edit-lead-campaignId') as HTMLSelectElement)?.value;
+                    handleUpdateLead(editingItem.id, { name, phone, email, status, stage, campaignId: campaignId ? parseInt(campaignId) : null });
                   }}
                   className="w-full py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow mt-6"
                 >
@@ -1965,10 +2458,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500/50"
                       id="edit-task-status"
                     >
-                      <option value="todo">Новая</option>
-                      <option value="in_progress">В работе</option>
-                      <option value="done">Выполнена</option>
-                      <option value="cancelled">Отменена</option>
+                      <option value="todo">{t.crm.taskStatus.todo}</option>
+                      <option value="in_progress">{t.crm.taskStatus.inProgress}</option>
+                      <option value="done">{t.crm.taskStatus.done}</option>
+                      <option value="cancelled">{t.crm.taskStatus.cancelled}</option>
                     </select>
                   </div>
                 </div>
@@ -2024,9 +2517,28 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       </div>
                     </div>
 
+                    {lead.campaign && (
+                      <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                        <p className="text-gray-500 text-sm mb-2">{t.crm.campaign}</p>
+                        <div className="flex items-center gap-2">
+                          <Target className="w-5 h-5 text-yellow-400" />
+                          <div className="flex-1">
+                            <p className="text-white font-medium">{lead.campaign.name}</p>
+                            <span className={`inline-block px-2 py-1 rounded-lg text-xs mt-1 ${
+                              lead.campaign.status === t.adminPanel.status.active ? 'bg-green-500/20 text-green-400' :
+                              lead.campaign.status === t.adminPanel.status.onReview ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-gray-500/20 text-gray-400'
+                            }`}>
+                              {lead.campaign.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-gray-500 text-sm mb-1">Телефон</p>
+                        <p className="text-gray-500 text-sm mb-1">{t.crm.phone}</p>
                         <p className="text-white">{lead.phone}</p>
                       </div>
                       <div>
@@ -2039,7 +2551,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                           }}
                           className={`px-3 py-1 rounded-lg text-sm border-0 cursor-pointer ${getStatusColor(lead.status)}`}
                         >
-                          <option value="new">Новый</option>
+                          <option value="new">{t.crm.placeholders.new}</option>
                           <option value="contacted">Контакт</option>
                           <option value="qualified">Квалифицирован</option>
                           <option value="converted">Конвертирован</option>
@@ -2048,11 +2560,11 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       </div>
                       <div>
                         <p className="text-gray-500 text-sm mb-1">Этап</p>
-                        <p className="text-white">{lead.stage || 'Первый контакт'}</p>
+                        <p className="text-white">{lead.stage || t.crm.defaultStage}</p>
                       </div>
                       <div>
                         <p className="text-gray-500 text-sm mb-1">Последнее действие</p>
-                        <p className="text-white">{lead.lastAction ? formatTimeAgo(lead.lastAction) : 'Нет'}</p>
+                        <p className="text-white">{lead.lastAction ? formatTimeAgo(lead.lastAction) : t.crm.placeholders.no}</p>
                       </div>
                     </div>
                   </div>
@@ -2064,7 +2576,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       <button
                         onClick={() => {
                           handleSaveNotes(lead.id);
-                          showToast('Заметки сохранены', 'success');
+                          showToast(t.crm.success.notesSaved, 'success');
                         }}
                         className="text-yellow-400 hover:text-yellow-300 flex items-center gap-1 text-sm transition-colors"
                       >
@@ -2075,7 +2587,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                     <textarea
                       className="w-full bg-slate-900/50 border border-slate-700 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                       rows={6}
-                      placeholder="Добавить заметку..."
+                      placeholder={t.crm.placeholders.addNote}
                       value={leadNotes[lead.id] || lead.notes || ''}
                       onChange={(e) => setLeadNotes(prev => ({ ...prev, [lead.id]: e.target.value }))}
                     ></textarea>
@@ -2083,9 +2595,9 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
 
                   {/* Источник */}
                   <div>
-                    <p className="text-gray-400 font-medium mb-2">Источник</p>
+                    <p className="text-gray-400 font-medium mb-2">{t.crm.source}</p>
                     <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4">
-                      <p className="text-white">{lead.source || 'Не указан'}</p>
+                      <p className="text-white">{lead.source || t.crm.placeholders.notSpecified}</p>
                     </div>
                   </div>
 
@@ -2100,7 +2612,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2"
                     >
                       <Edit className="w-5 h-5" />
-                      Редактировать
+                      {t.crm.edit}
                     </button>
                     <button
                       onClick={() => {
@@ -2169,7 +2681,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       </div>
                       <div>
                         <p className="text-gray-500 text-sm mb-1">Этап</p>
-                        <p className="text-white">{deal.stage || 'Новый'}</p>
+                        <p className="text-white">{deal.stage || t.crm.placeholders.new}</p>
                       </div>
                       <div>
                         <p className="text-gray-500 text-sm mb-1">Вероятность</p>
@@ -2234,7 +2746,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2"
                     >
                       <Edit className="w-5 h-5" />
-                      Редактировать
+                      {t.crm.edit}
                     </button>
                     <button
                       onClick={() => {
@@ -2292,7 +2804,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                         <h4 className="text-white text-lg mb-2">{task.title}</h4>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`px-3 py-1 rounded-lg text-sm ${getPriorityColor(task.priority)}`}>
-                            {task.priority === 'low' ? 'Низкий' : task.priority === 'medium' ? 'Средний' : task.priority === 'high' ? 'Высокий' : task.priority === 'urgent' ? 'Срочный' : task.priority}
+                            {task.priority === 'low' ? t.crm.priority.low : task.priority === 'medium' ? t.crm.priority.medium : task.priority === 'high' ? t.crm.priority.high : task.priority === 'urgent' ? t.crm.priority.urgent : task.priority}
                           </span>
                           <select
                             value={task.status}
@@ -2302,10 +2814,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                             }}
                             className={`px-3 py-1 rounded-lg text-sm border-0 cursor-pointer ${getStatusColor(task.status)}`}
                           >
-                            <option value="todo">Новая</option>
-                            <option value="in_progress">В работе</option>
-                            <option value="done">Выполнена</option>
-                            <option value="cancelled">Отменена</option>
+                            <option value="todo">{t.crm.taskStatus.todo}</option>
+                            <option value="in_progress">{t.crm.taskStatus.inProgress}</option>
+                            <option value="done">{t.crm.taskStatus.done}</option>
+                            <option value="cancelled">{t.crm.taskStatus.cancelled}</option>
                           </select>
                         </div>
                       </div>
@@ -2333,7 +2845,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       )}
                       {task.lead && (
                         <div>
-                          <p className="text-gray-500 text-sm mb-1">Связано с лидом</p>
+                          <p className="text-gray-500 text-sm mb-1">{t.crm.relatedToLead}</p>
                           <p className="text-white">{task.lead.name}</p>
                         </div>
                       )}
@@ -2391,7 +2903,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                       className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors flex items-center justify-center gap-2"
                     >
                       <Edit className="w-5 h-5" />
-                      Редактировать
+                      {t.crm.edit}
                     </button>
                     <button
                       onClick={() => {
@@ -2416,7 +2928,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white">Создать задачу</h3>
+              <h3 className="text-white">{t.crm.createTask}</h3>
               <button
                 onClick={() => setShowAddTaskModal(false)}
                 className="text-gray-400 hover:text-white"
@@ -2433,7 +2945,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   value={newTask.title}
                   onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
-                  placeholder="Название задачи"
+                  placeholder={t.crm.placeholders.taskName}
                 />
               </div>
 
@@ -2444,7 +2956,7 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                   rows={3}
-                  placeholder="Описание задачи"
+                  placeholder={t.crm.placeholders.taskDescription}
                 />
               </div>
 
@@ -2469,16 +2981,16 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
                     onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
                     className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500/50"
                   >
-                    <option value="todo">Новая</option>
-                    <option value="in_progress">В работе</option>
-                    <option value="done">Выполнена</option>
-                    <option value="cancelled">Отменена</option>
+                    <option value="todo">{t.crm.taskStatus.todo}</option>
+                    <option value="in_progress">{t.crm.taskStatus.inProgress}</option>
+                    <option value="done">{t.crm.taskStatus.done}</option>
+                    <option value="cancelled">{t.crm.taskStatus.cancelled}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <p className="text-gray-500 mb-2">Связанный лид</p>
+                <p className="text-gray-500 mb-2">{t.crm.relatedLead}</p>
                 <select
                   value={newTask.leadId}
                   onChange={(e) => setNewTask({ ...newTask, leadId: e.target.value })}
@@ -2510,10 +3022,10 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
               {isSaving ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Создание...
+                  {t.crm.creating}
                 </>
               ) : (
-                'Создать задачу'
+                t.crm.createTask
               )}
             </button>
           </div>
@@ -2526,18 +3038,18 @@ export function CRM({ onNavigate, showToast }: CRMProps) {
         onConfirm={handleDelete}
         title={
           itemToDelete?.type === 'lead'
-            ? 'Удалить лид?'
+            ? t.crm.deleteConfirmTitles.lead
             : itemToDelete?.type === 'deal'
-            ? 'Удалить сделку?'
-            : 'Удалить задачу?'
+            ? t.crm.deleteConfirmTitles.deal
+            : t.crm.deleteConfirmTitles.task
         }
         description={
           itemToDelete
-            ? `Вы уверены, что хотите удалить "${itemToDelete.name}"? Это действие нельзя отменить.`
-            : 'Вы уверены, что хотите удалить этот элемент? Это действие нельзя отменить.'
+            ? t.crm.deleteConfirm.message.replace('{name}', itemToDelete.name || '')
+            : t.crm.deleteConfirm.messageGeneric
         }
-        confirmText="Удалить"
-        cancelText="Отмена"
+        confirmText={t.common.delete}
+        cancelText={t.crm.cancel}
         variant="destructive"
         isLoading={isDeleting !== null}
       />

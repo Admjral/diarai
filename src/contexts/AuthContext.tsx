@@ -1,100 +1,185 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session, AuthError } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+
+// Типы для нашей собственной аутентификации
+interface User {
+  id: number;
+  email: string;
+  name: string;
+  plan: string;
+  role: string;
+}
+
+interface AuthError {
+  message: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
+  token: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
-  signInWithApple: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const TOKEN_KEY = 'diar_auth_token';
+const USER_KEY = 'diar_auth_user';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Восстановление сессии из localStorage
   useEffect(() => {
-    // Получаем текущую сессию
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const savedToken = localStorage.getItem(TOKEN_KEY);
+    const savedUser = localStorage.getItem(USER_KEY);
 
-    // Слушаем изменения аутентификации
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    if (savedToken && savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setToken(savedToken);
+        setUser(parsedUser);
 
-    return () => subscription.unsubscribe();
+        // Проверяем валидность токена
+        verifyToken(savedToken).catch(() => {
+          // Токен невалидный - очищаем
+          clearAuth();
+        });
+      } catch {
+        clearAuth();
+      }
+    }
+
+    setLoading(false);
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+  // Проверка токена на сервере
+  const verifyToken = async (authToken: string): Promise<User> => {
+    const response = await fetch(`${API_URL}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
     });
-    return { error };
+
+    if (!response.ok) {
+      throw new Error('Invalid token');
+    }
+
+    const data = await response.json();
+    return data.user;
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    return { error };
+  // Очистка авторизации
+  const clearAuth = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('userId');
+    setToken(null);
+    setUser(null);
   };
 
+  // Сохранение авторизации
+  const saveAuth = (authToken: string, authUser: User) => {
+    localStorage.setItem(TOKEN_KEY, authToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(authUser));
+    sessionStorage.setItem('userEmail', authUser.email);
+    sessionStorage.setItem('userId', String(authUser.id));
+    setToken(authToken);
+    setUser(authUser);
+  };
+
+  // Вход
+  const signIn = async (email: string, password: string): Promise<{ error: AuthError | null }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { error: { message: data.error || 'Ошибка входа' } };
+      }
+
+      saveAuth(data.token, data.user);
+      return { error: null };
+    } catch (err) {
+      console.error('[Auth] Ошибка входа:', err);
+      return { error: { message: 'Ошибка соединения с сервером' } };
+    }
+  };
+
+  // Регистрация
+  const signUp = async (
+    email: string,
+    password: string,
+    name?: string
+  ): Promise<{ error: AuthError | null }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { error: { message: data.error || 'Ошибка регистрации' } };
+      }
+
+      saveAuth(data.token, data.user);
+      return { error: null };
+    } catch (err) {
+      console.error('[Auth] Ошибка регистрации:', err);
+      return { error: { message: 'Ошибка соединения с сервером' } };
+    }
+  };
+
+  // Выход
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      if (token) {
+        await fetch(`${API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch {
+      // Игнорируем ошибки при выходе
+    } finally {
+      clearAuth();
+    }
   };
 
-  const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
-
-  const signInWithApple = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'apple',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
-
-  const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    return { error };
+  // Сброс пароля (пока заглушка - можно реализовать через email)
+  const resetPassword = async (email: string): Promise<{ error: AuthError | null }> => {
+    // TODO: Реализовать сброс пароля через email
+    console.log('Reset password requested for:', email);
+    return { error: { message: 'Функция сброса пароля пока не реализована' } };
   };
 
   const value = {
     user,
-    session,
+    token,
     loading,
     signIn,
     signUp,
     signOut,
-    signInWithGoogle,
-    signInWithApple,
     resetPassword,
   };
 
@@ -107,4 +192,9 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+// Хелпер для получения токена (используется в api.ts)
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }

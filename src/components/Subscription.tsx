@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle, Menu, X } from 'lucide-react';
-import { Screen } from '../App';
-import { useAuth } from '../contexts/AuthContext';
-import { userAPI } from '../lib/api';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle, Menu, X, Wallet, CreditCard, Loader2 } from 'lucide-react';
+import type { Screen } from '../types';
+import { userAPI, paymentAPI, walletAPI } from '../lib/api';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface SubscriptionProps {
   user: { name: string; plan: 'Free' | 'Pro' | 'Business' } | null;
@@ -12,9 +12,49 @@ interface SubscriptionProps {
 }
 
 export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: SubscriptionProps) {
-  const { user: supabaseUser } = useAuth();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [showPaymentMethod, setShowPaymentMethod] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+  // Загружаем баланс кошелька при монтировании
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        const wallet = await walletAPI.getWallet();
+        setWalletBalance(parseFloat(wallet.balance));
+      } catch (error) {
+        console.error('Ошибка загрузки кошелька:', error);
+        setWalletBalance(0);
+      }
+    };
+    loadWallet();
+  }, []);
+
+  // Обработка возврата с Kaspi
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const orderId = urlParams.get('orderId');
+
+    if (status === 'success' && orderId) {
+      showToast(t.subscription.paymentSuccess, 'success');
+      // Очищаем URL параметры
+      window.history.replaceState({}, '', window.location.pathname);
+      // Обновляем профиль пользователя
+      if (onPlanUpdate) {
+        // План будет обновлен автоматически через webhook
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+    } else if (status === 'cancelled') {
+      showToast(t.subscription.paymentCancelled, 'info');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [showToast, onPlanUpdate]);
 
   const handlePlanSelect = async (planName: string) => {
     // Преобразуем название плана в формат enum
@@ -26,7 +66,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
 
     const plan = planMap[planName];
     if (!plan) {
-      showToast('Неверный план подписки', 'error');
+      showToast(t.subscription.invalidPlan, 'error');
       return;
     }
 
@@ -35,39 +75,88 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
       return;
     }
 
-    setLoading(planName);
+    // Для бесплатного плана просто обновляем
+    if (plan === 'Free') {
+      setLoading(planName);
+      try {
+        const updatedProfile = await userAPI.updatePlan(plan);
+        if (onPlanUpdate) {
+          onPlanUpdate(updatedProfile.plan);
+        }
+        showToast(t.subscription.planChangedToFree, 'success');
+      } catch (error: any) {
+        showToast(error.message || t.subscription.planUpdateError, 'error');
+      } finally {
+        setLoading(null);
+      }
+      return;
+    }
+
+    // Для платных планов показываем выбор способа оплаты
+    setSelectedPlan(planName);
+    setShowPaymentMethod(planName);
+  };
+
+  const handlePaymentMethod = async (paymentMethod: 'wallet' | 'kaspi') => {
+    if (!selectedPlan) return;
+
+    const planMap: Record<string, 'Pro' | 'Business'> = {
+      'PRO': 'Pro',
+      'BUSINESS': 'Business',
+    };
+
+    const plan = planMap[selectedPlan] as 'Pro' | 'Business';
+    if (!plan) {
+      showToast(t.subscription.invalidPlan, 'error');
+      return;
+    }
+
+    setLoading(selectedPlan);
+    setShowPaymentMethod(null);
 
     try {
-      const userEmail = supabaseUser?.email;
-      const userId = supabaseUser?.id;
+      if (paymentMethod === 'wallet') {
+        // Оплата через кошелек
+        const result = await paymentAPI.subscribe({
+          plan,
+          paymentMethod: 'wallet',
+        });
 
-      if (!userEmail || !userId) {
-        showToast('Ошибка: пользователь не авторизован', 'error');
-        setLoading(null);
-        return;
+        if (result.success) {
+          // Обновляем баланс
+          if (result.newBalance !== undefined) {
+            setWalletBalance(result.newBalance);
+          }
+          // Обновляем план
+          if (onPlanUpdate) {
+            onPlanUpdate(plan);
+          }
+          showToast(t.subscription.subscriptionActivated, 'success');
+        }
+      } else {
+        // Оплата через Kaspi
+        const result = await paymentAPI.subscribe({
+          plan,
+          paymentMethod: 'kaspi',
+        });
+
+        if (result.success && result.paymentUrl) {
+          // Перенаправляем на Kaspi
+          window.location.href = result.paymentUrl;
+        } else {
+          showToast(t.subscription.kaspiOrderError, 'error');
+          setLoading(null);
+        }
       }
-
-      // Обновляем план в БД
-      const updatedProfile = await userAPI.updatePlan(plan, userId, userEmail);
-
-      // Обновляем локальное состояние через callback
-      if (onPlanUpdate) {
-        onPlanUpdate(updatedProfile.plan);
-      }
-
-      showToast(
-        plan === 'Free'
-          ? `План успешно изменен на ${planName}`
-          : `План ${planName} выбран. Перенаправляем на оплату...`,
-        'success'
-      );
     } catch (error: any) {
-      console.error('Ошибка при обновлении плана:', error);
-      showToast(
-        error.message || 'Ошибка при обновлении плана подписки',
-        'error'
-      );
-    } finally {
+      console.error('Ошибка при оплате:', error);
+      
+      if (error.message?.includes('Недостаточно средств')) {
+        showToast(t.subscription.insufficientFunds, 'error');
+        setShowPaymentMethod(selectedPlan);
+      } else {
+        showToast(error.message || t.subscription.paymentError, 'error');
+      }
       setLoading(null);
     }
   };
@@ -75,52 +164,52 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
     {
       name: 'FREE',
       price: '₸0',
-      period: 'навсегда',
+      period: t.subscription.forever,
       icon: <Sparkles className="w-8 h-8" />,
       gradient: 'from-gray-600 to-gray-800',
       features: [
-        { text: 'До 10 клиентов в CRM', included: true },
-        { text: 'Базовая аналитика', included: true },
-        { text: '1 интеграция', included: true },
-        { text: 'Email поддержка', included: true },
-        { text: 'AI оптимизация рекламы', included: false },
-        { text: 'Приоритетная поддержка', included: false },
-        { text: 'Брендированные отчеты', included: false },
+        { text: t.subscription.features.upTo10Clients, included: true },
+        { text: t.subscription.features.basicAnalytics, included: true },
+        { text: t.subscription.features.oneIntegration, included: true },
+        { text: t.subscription.features.emailSupport, included: true },
+        { text: t.subscription.features.aiOptimization, included: false },
+        { text: t.subscription.features.prioritySupport, included: false },
+        { text: t.subscription.features.brandedReports, included: false },
       ],
       current: user?.plan === 'Free',
     },
     {
       name: 'PRO',
       price: '₸9,900',
-      period: 'в месяц',
+      period: t.subscription.perMonth,
       icon: <Zap className="w-8 h-8" />,
       gradient: 'from-blue-500 to-purple-600',
       popular: true,
       features: [
-        { text: 'До 100 клиентов в CRM', included: true },
-        { text: 'Расширенная аналитика', included: true },
-        { text: '5 интеграций', included: true },
-        { text: 'AI оптимизация рекламы', included: true },
-        { text: 'Чат-боты для Instagram/Telegram', included: true },
-        { text: 'Приоритетная поддержка', included: true },
-        { text: 'Брендированные отчеты', included: false },
+        { text: t.subscription.features.upTo100Clients, included: true },
+        { text: t.subscription.features.advancedAnalytics, included: true },
+        { text: t.subscription.features.fiveIntegrations, included: true },
+        { text: t.subscription.features.aiOptimization, included: true },
+        { text: t.subscription.features.chatbots, included: true },
+        { text: t.subscription.features.prioritySupport, included: true },
+        { text: t.subscription.features.brandedReports, included: false },
       ],
       current: user?.plan === 'Pro',
     },
     {
       name: 'BUSINESS',
       price: '₸24,900',
-      period: 'в месяц',
+      period: t.subscription.perMonth,
       icon: <Crown className="w-8 h-8" />,
       gradient: 'from-yellow-400 to-amber-600',
       features: [
-        { text: 'Неограниченное количество клиентов', included: true },
-        { text: 'Полная аналитика + BI', included: true },
-        { text: 'Все интеграции', included: true },
-        { text: 'AI оптимизация рекламы', included: true },
-        { text: 'Мультиканальные чат-боты', included: true },
-        { text: 'VIP поддержка 24/7', included: true },
-        { text: 'Брендированные отчеты', included: true },
+        { text: t.subscription.features.unlimitedClients, included: true },
+        { text: t.subscription.features.fullAnalytics, included: true },
+        { text: t.subscription.features.allIntegrations, included: true },
+        { text: t.subscription.features.aiOptimization, included: true },
+        { text: t.subscription.features.multichannelChatbots, included: true },
+        { text: t.subscription.features.vipSupport, included: true },
+        { text: t.subscription.features.brandedReports, included: true },
       ],
       current: user?.plan === 'Business',
     },
@@ -138,7 +227,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-white">Подписка</h1>
+            <h1 className="text-white">{t.subscription.title}</h1>
             {/* Desktop menu */}
             <div className="hidden sm:flex items-center gap-4 ml-auto">
               <button
@@ -146,7 +235,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Техподдержка</span>
+                <span>{t.subscription.supportType}</span>
               </button>
             </div>
             {/* Mobile burger menu */}
@@ -179,7 +268,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                       className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
                     >
                       <MessageCircle className="w-5 h-5" />
-                      <span>Техподдержка</span>
+                      <span>{t.subscription.supportType}</span>
                     </button>
                   </div>
                 </>
@@ -192,9 +281,9 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header Section */}
         <div className="text-center mb-12">
-          <h1 className="text-white mb-4">Выберите тариф</h1>
+          <h1 className="text-white mb-4">{t.subscription.selectPlan}</h1>
           <p className="text-gray-400 max-w-2xl mx-auto">
-            Начните с бесплатного плана или выберите Pro/Business для полного доступа к AI-инструментам
+            {t.subscription.selectPlanDescription}
           </p>
         </div>
 
@@ -214,7 +303,7 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
               {/* Popular Badge */}
               {plan.popular && (
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-full">
-                  Популярный
+                  {t.subscription.popular}
                 </div>
               )}
 
@@ -271,6 +360,53 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                 >
                   Текущий план
                 </button>
+              ) : showPaymentMethod === plan.name ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-400 mb-2 text-center">
+                    {walletBalance !== null && plan.name !== 'FREE' && (
+                      <span>
+                        {t.subscription.balance} {walletBalance.toLocaleString('ru-RU')} ₸
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handlePaymentMethod('wallet')}
+                    disabled={loading === plan.name || (walletBalance !== null && plan.name === 'PRO' && walletBalance < 9900) || (walletBalance !== null && plan.name === 'BUSINESS' && walletBalance < 24900)}
+                    className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading === plan.name ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Wallet className="w-4 h-4" />
+                        {t.subscription.payWithWallet}
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handlePaymentMethod('kaspi')}
+                    disabled={loading === plan.name}
+                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading === plan.name ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        {t.subscription.payWithKaspi}
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPaymentMethod(null);
+                      setSelectedPlan(null);
+                    }}
+                    className="w-full py-2 text-gray-400 hover:text-white transition-colors text-sm"
+                  >
+                    {t.common.cancel}
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => handlePlanSelect(plan.name)}
@@ -284,10 +420,10 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                   }`}
                 >
                   {loading === plan.name
-                    ? 'Обновление...'
+                    ? t.subscription.updating
                     : plan.name === 'FREE'
-                    ? 'Начать бесплатно'
-                    : 'Оформить подписку'}
+                    ? t.subscription.startFree
+                    : t.subscription.subscribe}
                 </button>
               )}
             </div>
@@ -297,13 +433,13 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
         {/* Feature Comparison Table */}
         <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
           <div className="p-6 border-b border-slate-700">
-            <h3 className="text-white">Сравнение возможностей</h3>
+            <h3 className="text-white">{t.subscription.comparisonTitle}</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b border-slate-700">
-                  <th className="text-left p-3 sm:p-4 text-gray-400 text-sm sm:text-base">Функция</th>
+                  <th className="text-left p-3 sm:p-4 text-gray-400 text-sm sm:text-base">{t.subscription.feature}</th>
                   <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">FREE</th>
                   <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">PRO</th>
                   <th className="text-center p-3 sm:p-4 text-gray-400 text-sm sm:text-base">BUSINESS</th>
@@ -311,19 +447,19 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
               </thead>
               <tbody>
                 <tr className="border-b border-slate-700">
-                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Клиенты в CRM</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.clientsInCRM}</td>
                   <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">10</td>
                   <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">100</td>
-                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Неограниченно</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.unlimited}</td>
                 </tr>
                 <tr className="border-b border-slate-700">
-                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Интеграции</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.integrations}</td>
                   <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">1</td>
                   <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">5</td>
-                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">Все</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.all}</td>
                 </tr>
                 <tr className="border-b border-slate-700">
-                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">AI оптимизация рекламы</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.aiOptimization}</td>
                   <td className="p-3 sm:p-4 text-center text-gray-600 text-sm sm:text-base">—</td>
                   <td className="p-3 sm:p-4 text-center text-green-400">
                     <Check className="w-4 h-4 sm:w-5 sm:h-5 mx-auto" />
@@ -333,10 +469,10 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">Поддержка</td>
-                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Email</td>
-                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">Приоритет</td>
-                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">VIP 24/7</td>
+                  <td className="p-3 sm:p-4 text-gray-300 text-sm sm:text-base">{t.subscription.supportType}</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">{t.subscription.email}</td>
+                  <td className="p-3 sm:p-4 text-center text-gray-400 text-sm sm:text-base">{t.subscription.priority}</td>
+                  <td className="p-3 sm:p-4 text-center text-green-400 text-sm sm:text-base">{t.subscription.vip247}</td>
                 </tr>
               </tbody>
             </table>
@@ -346,9 +482,9 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
         {/* FAQ or Additional Info */}
         <div className="mt-12 text-center">
           <p className="text-gray-400">
-            Нужна помощь с выбором тарифа?{' '}
+            {t.subscription.needHelp}{' '}
             <a href="#" className="text-yellow-500 hover:text-yellow-400">
-              Свяжитесь с нами
+              {t.subscription.contactUs}
             </a>
           </p>
         </div>

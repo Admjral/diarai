@@ -1,109 +1,135 @@
 import { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import { log } from '../utils/logger';
+
+// Функция для получения JWT_SECRET (вызывается после загрузки .env)
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required. Set it in your .env file.');
+  }
+  return secret;
+}
 
 // Расширяем тип Request для добавления user
 declare global {
   namespace Express {
     interface Request {
       user?: {
-        id: string;
+        userId: number;
         email: string;
+        role: string;
       };
     }
   }
 }
 
+interface JwtPayload {
+  userId: number;
+  email: string;
+  role: string;
+  iat: number;
+  exp: number;
+}
+
 /**
- * Production middleware для аутентификации через Supabase JWT токены
- * 
- * Требования:
- * 1. Установите @supabase/supabase-js: npm install @supabase/supabase-js
- * 2. Добавьте в .env: SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY
- * 
- * Middleware проверяет JWT токен из заголовка Authorization: Bearer <token>
- * и валидирует его через Supabase Admin API
+ * Middleware для аутентификации через JWT токены
+ *
+ * Проверяет JWT токен из заголовка Authorization: Bearer <token>
+ * и валидирует его через jsonwebtoken
  */
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
     // Получаем токен из заголовка Authorization
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('[authMiddleware] Токен не предоставлен. Заголовок authorization:', authHeader ? 'присутствует, но неверный формат' : 'отсутствует');
+      log.debug('Токен не предоставлен', {
+        hasHeader: !!authHeader,
+        headerFormat: authHeader ? 'неверный формат' : 'отсутствует',
+      });
       return res.status(401).json({ error: 'Токен не предоставлен' });
     }
 
     const token = authHeader.substring(7);
-    console.log('[authMiddleware] Получен токен, длина:', token.length);
 
-    // Проверка токена через Supabase Admin API
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('[authMiddleware] Supabase credentials not configured.');
-      console.error('[authMiddleware] SUPABASE_URL:', supabaseUrl ? 'установлен' : 'не установлен');
-      console.error('[authMiddleware] SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? 'установлен' : 'не установлен');
-      return res.status(500).json({ error: 'Ошибка конфигурации сервера: настройте SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY в .env' });
+    if (!token) {
+      return res.status(401).json({ error: 'Токен не предоставлен' });
     }
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+
+    // Верификация токена
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
+
+    log.debug('Пользователь аутентифицирован', {
+      userId: decoded.userId,
+      userEmail: decoded.email,
     });
-    
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    
-    if (error || !user) {
-      console.error('[authMiddleware] Ошибка проверки токена:', error?.message || 'Пользователь не найден');
-      console.error('[authMiddleware] Детали ошибки:', error);
-      
-      // Более детальные сообщения об ошибках
-      if (error?.message?.includes('JWT')) {
-        return res.status(401).json({ error: 'Недействительный токен. Пожалуйста, войдите заново.' });
-      }
-      if (error?.message?.includes('expired')) {
-        return res.status(401).json({ error: 'Токен истек. Пожалуйста, войдите заново.' });
-      }
-      
-      return res.status(401).json({ error: 'Недействительный токен' });
-    }
-    
-    console.log('[authMiddleware] Пользователь аутентифицирован:', user.id, user.email);
-    
+
     // Добавляем user в request
     req.user = {
-      id: user.id,
-      email: user.email || '',
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
     };
 
     next();
   } catch (error: any) {
-    console.error('[authMiddleware] Ошибка аутентификации:', error);
-    console.error('[authMiddleware] Стек ошибки:', error?.stack);
+    log.warn('Ошибка проверки токена', {
+      errorMessage: error?.message,
+      errorName: error?.name,
+    });
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Токен истек. Пожалуйста, войдите заново.' });
+    }
+
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Недействительный токен. Пожалуйста, войдите заново.' });
+    }
+
     res.status(401).json({ error: 'Ошибка аутентификации' });
   }
 }
 
-// Опциональное middleware для разработки (без проверки токена)
+/**
+ * ВНИМАНИЕ: Dev middleware ТОЛЬКО для локальной разработки!
+ * Никогда не используйте в production - это обходит всю аутентификацию.
+ *
+ * Условия использования:
+ * 1. USE_DEV_AUTH=true в .env
+ * 2. NODE_ENV=development
+ * 3. Не на Vercel (нет VERCEL env var)
+ */
 export function devAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  // КРИТИЧНО: Проверяем ВСЕ условия для безопасности
+  const isDevEnvironment = process.env.NODE_ENV === 'development';
+  const isNotVercel = !process.env.VERCEL;
+  const isDevAuthEnabled = process.env.USE_DEV_AUTH === 'true';
+
+  // Если хотя бы одно условие не выполнено - используем production auth
+  if (!isDevEnvironment || !isNotVercel || !isDevAuthEnabled) {
+    log.warn('devAuthMiddleware вызван в неподходящей среде, переключаюсь на authMiddleware', {
+      isDevEnvironment,
+      isNotVercel,
+      isDevAuthEnabled,
+    });
+    return authMiddleware(req, res, next);
+  }
+
   // В режиме разработки используем заголовки для идентификации пользователя
-  const userId = req.headers['x-user-id'] as string || 'dev-user-id';
+  const userId = parseInt(req.headers['x-user-id'] as string) || 1;
   const userEmail = req.headers['x-user-email'] as string || 'dev@example.com';
 
-  console.log('[devAuthMiddleware] Headers:', {
-    'x-user-id': req.headers['x-user-id'],
-    'x-user-email': req.headers['x-user-email'],
+  log.debug('devAuthMiddleware используется (только локальная разработка)', {
+    userId,
+    userEmail,
   });
-  console.log('[devAuthMiddleware] Используемые значения:', { userId, userEmail });
 
   req.user = {
-    id: userId,
+    userId: userId,
     email: userEmail,
+    role: 'user',
   };
 
   next();
 }
-

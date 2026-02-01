@@ -57,6 +57,35 @@
   --gradient-card: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
 }
 
+/* Анимации загрузки */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.3);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 40px rgba(234, 179, 8, 0.5);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
 /* Темная тема (опционально) */
 .dark {
   --bg-primary: #0f172a;
@@ -74,5 +103,6 @@
   --border-medium: #475569;
   --border-dark: #64748b;
 }
+
 
 

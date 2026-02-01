@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { log, Sentry } from '../utils/logger';
 
 export function errorHandler(
   err: Error,
@@ -6,16 +7,14 @@ export function errorHandler(
   res: Response,
   next: NextFunction
 ) {
-  console.error('=== ERROR HANDLER ===');
-  console.error('Ошибка:', err);
-  console.error('Тип ошибки:', err.constructor.name);
-  console.error('Сообщение:', err.message);
-  if ((err as any).stack) {
-    console.error('Stack trace:', (err as any).stack);
-  }
-  console.error('URL:', req.url);
-  console.error('Method:', req.method);
-  console.error('Headers:', JSON.stringify(req.headers, null, 2));
+  // Логируем ошибку через структурированный логгер
+  log.error('Ошибка в обработчике запроса', err, {
+    url: req.url,
+    method: req.method,
+    userId: req.user?.userId,
+    userEmail: req.user?.email,
+    headers: req.headers,
+  });
 
   // Проверяем, не был ли ответ уже отправлен
   if (res.headersSent) {
@@ -55,11 +54,25 @@ export function errorHandler(
     }
   }
 
-  console.error('[errorHandler] Отправляем ответ с деталями:', JSON.stringify({
-    error: err.message || 'Внутренняя ошибка сервера',
-    message: err.message,
-    details: errorDetails,
-  }, null, 2));
+  // Отправляем в Sentry с контекстом запроса
+  if (process.env.SENTRY_DSN) {
+    Sentry.withScope((scope) => {
+      scope.setTag('url', req.url);
+      scope.setTag('method', req.method);
+      scope.setUser({
+        id: req.user?.userId,
+        email: req.user?.email,
+      });
+      scope.setContext('request', {
+        url: req.url,
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+      });
+      scope.setContext('error', errorDetails);
+      Sentry.captureException(err);
+    });
+  }
 
   res.status(500).json({
     error: err.message || 'Внутренняя ошибка сервера',

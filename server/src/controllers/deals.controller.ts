@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
 import { getUserIdByEmail } from '../utils/userHelper';
+import { createNotification } from '../services/notification.service';
+import { NotificationType } from '@prisma/client';
 
 export class DealsController {
   // Получить все сделки пользователя
@@ -149,6 +151,31 @@ export class DealsController {
           ...(clientId !== undefined && { clientId }),
         },
       });
+
+      // Отправляем уведомление при закрытии сделки
+      if (stage && (stage === 'closed_won' || stage === 'closed_lost') && deal.stage !== stage) {
+        try {
+          const isWon = stage === 'closed_won';
+          await createNotification({
+            userId,
+            type: NotificationType.deal_closed,
+            title: isWon ? 'Сделка выиграна!' : 'Сделка проиграна',
+            message: isWon
+              ? `Сделка "${updatedDeal.name}" успешно закрыта. Сумма: ${updatedDeal.amount} ${updatedDeal.currency}`
+              : `Сделка "${updatedDeal.name}" закрыта как проигранная.`,
+            data: {
+              dealId: updatedDeal.id,
+              dealName: updatedDeal.name,
+              amount: updatedDeal.amount.toString(),
+              currency: updatedDeal.currency,
+              stage: stage,
+            },
+          });
+        } catch (error: any) {
+          console.error('[deals.controller] Ошибка отправки уведомления о закрытии сделки:', error);
+          // Не блокируем обновление сделки из-за ошибки уведомления
+        }
+      }
 
       res.json(updatedDeal);
     } catch (error: any) {

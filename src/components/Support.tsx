@@ -1,7 +1,8 @@
 import { ArrowLeft, MessageSquare, Send, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Phone, Menu, X } from 'lucide-react';
-import { Screen } from '../App';
+import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supportAPI } from '../lib/api';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface SupportProps {
   onNavigate: (screen: Screen) => void;
@@ -20,6 +21,7 @@ interface SupportTicket {
 }
 
 export function Support({ onNavigate, showToast }: SupportProps) {
+  const { t } = useLanguage();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -39,20 +41,20 @@ export function Support({ onNavigate, showToast }: SupportProps) {
       console.error('Ошибка при загрузке тикетов:', error);
       
       // Проверяем тип ошибки для более понятного сообщения
-      const errorMessage = error?.message || 'Не удалось загрузить обращения';
+      const errorMessage = error?.message || t.support.loadError;
       const isTableNotFound = errorMessage.includes('не найдена') || 
                              errorMessage.includes('does not exist') ||
                              errorMessage.includes('PRISMA_MODEL_NOT_FOUND');
       
       if (isTableNotFound) {
-        showToast('Таблица техподдержки не создана. Обратитесь к администратору.', 'error');
+        showToast(t.support.tableNotCreated, 'error');
       } else {
         showToast(errorMessage, 'error');
       }
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => {
     loadTickets();
@@ -62,7 +64,7 @@ export function Support({ onNavigate, showToast }: SupportProps) {
     e.preventDefault();
     
     if (!formData.phone.trim()) {
-      showToast('Введите номер телефона', 'error');
+      showToast(t.support.callUs.phoneRequired, 'error');
       return;
     }
 
@@ -70,25 +72,25 @@ export function Support({ onNavigate, showToast }: SupportProps) {
     const phoneRegex = /^[\d\s()+-]+$/;
     const cleanPhone = formData.phone.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
-      showToast('Введите корректный номер телефона', 'error');
+      showToast(t.support.callUs.phoneInvalid, 'error');
       return;
     }
 
     try {
       setSubmitting(true);
       await supportAPI.create({
-        subject: 'Запрос на звонок',
+        subject: t.support.callUs.subject,
         message: `Номер телефона для связи: ${formData.phone}`,
         priority: formData.priority,
       });
       
-      showToast('Запрос отправлен! Мы перезвоним вам в течение 5 минут.', 'success');
+      showToast(t.support.callUs.requestSent, 'success');
       setFormData({ phone: '', priority: 'medium' });
       setShowForm(false);
       await loadTickets();
     } catch (error: any) {
       console.error('Ошибка при создании обращения:', error);
-      showToast(error.message || 'Не удалось отправить запрос', 'error');
+      showToast(error.message || t.support.callUs.requestError, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -111,13 +113,13 @@ export function Support({ onNavigate, showToast }: SupportProps) {
 
   const getStatusLabel = useCallback((status: SupportTicket['status']) => {
     const labels = {
-      open: 'Открыто',
-      in_progress: 'В работе',
-      resolved: 'Решено',
-      closed: 'Закрыто',
+      open: t.support.status.open,
+      in_progress: t.support.status.in_progress,
+      resolved: t.support.status.resolved,
+      closed: t.support.status.closed,
     };
     return labels[status] || status;
-  }, []);
+  }, [t]);
 
   const getPriorityColor = useCallback((priority: SupportTicket['priority']) => {
     const colors = {
@@ -131,13 +133,13 @@ export function Support({ onNavigate, showToast }: SupportProps) {
 
   const getPriorityLabel = useCallback((priority: SupportTicket['priority']) => {
     const labels = {
-      low: 'Низкий',
-      medium: 'Средний',
-      high: 'Высокий',
-      urgent: 'Срочный',
+      low: t.support.priority.low,
+      medium: t.support.priority.medium,
+      high: t.support.priority.high,
+      urgent: t.support.priority.urgent,
     };
     return labels[priority] || priority;
-  }, []);
+  }, [t]);
 
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
@@ -171,7 +173,7 @@ export function Support({ onNavigate, showToast }: SupportProps) {
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <h1 className="text-white">Техподдержка</h1>
+              <h1 className="text-white">{t.support.title}</h1>
             </div>
             {/* Mobile burger menu (empty for now, can add actions later) */}
             <div className="sm:hidden relative">
@@ -203,7 +205,7 @@ export function Support({ onNavigate, showToast }: SupportProps) {
                       className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3"
                     >
                       <ArrowLeft className="w-5 h-5" />
-                      <span>Вернуться на дашборд</span>
+                      <span>{t.support.backToDashboard}</span>
                     </button>
                   </div>
                 </>
@@ -217,15 +219,15 @@ export function Support({ onNavigate, showToast }: SupportProps) {
         {/* Action Buttons */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
           <a
-            href="tel:+77001234567"
+            href="tel:+77758554927"
             className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 hover:border-slate-600 transition-all flex items-center gap-4 group"
           >
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Phone className="w-8 h-8 text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="text-white font-semibold mb-1">Позвонить</h3>
-              <p className="text-gray-400 text-sm">Свяжитесь с нами прямо сейчас</p>
+              <h3 className="text-white font-semibold mb-1">{t.support.callUs.title}</h3>
+              <p className="text-gray-400 text-sm">{t.support.callUs.description}</p>
             </div>
           </a>
           
@@ -238,10 +240,10 @@ export function Support({ onNavigate, showToast }: SupportProps) {
             </div>
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">
-                {showForm ? 'Отменить запрос' : 'Запросить звонок'}
+                {showForm ? t.support.callUs.cancelRequest : t.support.callUs.requestCall}
               </h3>
               <p className="text-gray-400 text-sm">
-                {showForm ? 'Закрыть форму' : 'Мы перезвоним вам в течение 5 минут'}
+                {showForm ? t.support.callUs.closeForm : t.support.callUs.weWillCall}
               </p>
             </div>
           </button>
@@ -250,10 +252,10 @@ export function Support({ onNavigate, showToast }: SupportProps) {
         {/* Form */}
         {showForm && (
           <div className="mb-8 bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
-            <h2 className="text-white mb-4 text-xl">Запрос на звонок</h2>
+            <h2 className="text-white mb-4 text-xl">{t.support.callUs.requestTitle}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-gray-300 mb-2">Номер телефона</label>
+                <label className="block text-gray-300 mb-2">{t.support.callUs.phoneLabel}</label>
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -267,7 +269,7 @@ export function Support({ onNavigate, showToast }: SupportProps) {
                 </div>
                 <p className="mt-2 text-sm text-gray-400 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Мы перезвоним вам в течение 5 минут
+                  {t.support.callUs.weWillCall}
                 </p>
               </div>
               
@@ -279,10 +281,10 @@ export function Support({ onNavigate, showToast }: SupportProps) {
                   className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-yellow-500"
                   disabled={submitting}
                 >
-                  <option value="low">Низкий</option>
-                  <option value="medium">Средний</option>
-                  <option value="high">Высокий</option>
-                  <option value="urgent">Срочный</option>
+                  <option value="low">{t.support.priority.low}</option>
+                  <option value="medium">{t.support.priority.medium}</option>
+                  <option value="high">{t.support.priority.high}</option>
+                  <option value="urgent">{t.support.priority.urgent}</option>
                 </select>
               </div>
 
@@ -294,12 +296,12 @@ export function Support({ onNavigate, showToast }: SupportProps) {
                 {submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Отправка...
+                    {t.support.callUs.sending}
                   </>
                 ) : (
                   <>
                     <Phone className="w-4 h-4" />
-                    Запросить звонок
+                    {t.support.callUs.send}
                   </>
                 )}
               </button>

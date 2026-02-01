@@ -1,11 +1,13 @@
 import { useState, memo, useMemo, useCallback } from 'react';
 import { Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface OnboardingProps {
   onComplete: () => void;
 }
 
 export const Onboarding = memo(function Onboarding({ onComplete }: OnboardingProps) {
+  const { t } = useLanguage();
   const [step, setStep] = useState(0);
 
   const screens = useMemo(() => [
@@ -16,20 +18,20 @@ export const Onboarding = memo(function Onboarding({ onComplete }: OnboardingPro
     },
     {
       icon: <Sparkles className="w-24 h-24 mb-8 text-yellow-500" />,
-      title: 'AI Marketing CRM для бизнеса',
-      description: 'Умная платформа для управления маркетингом и продажами',
+      title: t.onboarding.screen1.title,
+      description: t.onboarding.screen1.description,
     },
     {
       icon: <Target className="w-24 h-24 mb-8 text-blue-500" />,
-      title: 'Всё в одном месте',
-      description: 'Создавай контент, веди CRM, запускай рекламу, анализируй продажи',
+      title: t.onboarding.screen2.title,
+      description: t.onboarding.screen2.description,
     },
     {
       icon: <Zap className="w-24 h-24 mb-8 text-purple-500" />,
-      title: 'Готовы начать?',
-      description: 'Автоматизируйте маркетинг с помощью искусственного интеллекта',
+      title: t.onboarding.screen3.title,
+      description: t.onboarding.screen3.description,
     },
-  ], []);
+  ], [t]);
 
   const handleNext = useCallback(() => {
     if (step < screens.length - 1) {
@@ -81,7 +83,7 @@ export const Onboarding = memo(function Onboarding({ onComplete }: OnboardingPro
           onClick={handleNext}
           className="px-8 py-4 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 text-black rounded-xl hover:shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 hover:scale-105"
         >
-          {step === screens.length - 1 ? 'Продолжить' : 'Далее'}
+          {step === screens.length - 1 ? t.onboarding.continue : t.onboarding.next}
         </button>
       </div>
     </div>

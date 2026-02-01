@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { ArrowLeft, Target, TrendingUp, DollarSign, Eye, MousePointer, Sparkles, X, Plus, Phone, MapPin, BarChart3, Play, Pause, MoreVertical, Loader2, Search, Filter, ArrowUpDown, MessageSquare, Menu } from 'lucide-react';
-import { Screen } from '../App';
+import type { Screen } from '../types';
 import { campaignsAPI, aiAPI, APIError, AIAudienceResponse } from '../lib/api';
 import { getCache, setCache, clearCache, cacheKeys } from '../lib/cache';
 import { CampaignListSkeleton } from './SkeletonLoaders';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useLanguage } from '../contexts/LanguageContext';
 
 // Временный тип для формы кампании (пока zod не установлен)
 interface CampaignFormData {
@@ -18,48 +19,6 @@ interface CampaignFormData {
   imageUrl?: string | null;
 }
 
-// Временная функция валидации (заменяет zod)
-const validateCampaignForm = (data: CampaignFormData) => {
-  const errors: Record<string, { message: string }> = {};
-
-  if (!data.name || data.name.trim().length < 3) {
-    errors.name = { message: 'Название кампании должно содержать минимум 3 символа' };
-  } else if (data.name.trim().length > 100) {
-    errors.name = { message: 'Название кампании не должно превышать 100 символов' };
-  }
-
-  if (!data.platforms || data.platforms.length === 0) {
-    errors.platforms = { message: 'Выберите хотя бы одну платформу' };
-  }
-
-  if (!data.budget || data.budget.trim().length === 0) {
-    errors.budget = { message: 'Бюджет обязателен' };
-  } else {
-    const budgetNum = parseFloat(data.budget.replace(/[^\d.]/g, ''));
-    if (isNaN(budgetNum) || budgetNum <= 0) {
-      errors.budget = { message: 'Бюджет должен быть положительным числом' };
-    } else if (budgetNum < 1000) {
-      errors.budget = { message: 'Минимальный бюджет: ₸1,000' };
-    }
-  }
-
-  if (!data.phone || data.phone.trim().length === 0) {
-    errors.phone = { message: 'Номер телефона обязателен' };
-  } else {
-    const phoneRegex = /^[\d\s()+-]+$/;
-    if (!phoneRegex.test(data.phone)) {
-      errors.phone = { message: 'Неверный формат номера телефона' };
-    } else if (data.phone.replace(/\D/g, '').length < 10) {
-      errors.phone = { message: 'Номер телефона должен содержать минимум 10 цифр' };
-    }
-  }
-
-  if (data.location && data.location.length > 200) {
-    errors.location = { message: 'Локация не должна превышать 200 символов' };
-  }
-
-  return Object.keys(errors).length === 0 ? undefined : errors;
-};
 
 interface AIAdvertisingProps {
   onNavigate: (screen: Screen) => void;
@@ -90,31 +49,60 @@ interface Campaign {
 // Функция для проверки, истек ли URL Azure Blob Storage
 function isUrlExpired(url: string): boolean {
   try {
-    // Проверяем, является ли это URL Azure Blob Storage
+    // Пропускаем проверку для base64 data URLs (они не истекают)
+    if (url.startsWith('data:')) {
+      return false;
+    }
+
+    // Пропускаем проверку для локальных uploads (они не истекают)
+    if (url.includes('/uploads/')) {
+      return false;
+    }
+
+    // Проверяем только Azure Blob Storage URLs (legacy)
     if (!url.includes('blob.core.windows.net')) {
       return false; // Не Azure Blob Storage, не проверяем
     }
 
-    // Извлекаем параметр se= (expiry time) из URL
+    // Извлекаем параметры из URL
     const urlObj = new URL(url);
     const expiryParam = urlObj.searchParams.get('se');
+    const sigParam = urlObj.searchParams.get('sig');
     
+    // Если нет параметра expiry, не проверяем (может быть публичный URL или другой формат)
     if (!expiryParam) {
-      return false; // Нет параметра expiry, считаем что не истек
+      return false; // Нет параметра expiry, считаем что не истек (показываем изображение)
     }
 
-    // Парсим время истечения (формат: 2025-12-20T20:22:46Z)
-    const expiryTime = new Date(expiryParam);
+    // Парсим время истечения (формат может быть: 2025-12-20T20:22:46Z или 2025-12-20T20:22:46.000Z)
+    let expiryTime: Date;
+    try {
+      expiryTime = new Date(expiryParam);
+    } catch {
+      // Если не удалось распарсить дату, считаем URL истекшим
+      return true;
+    }
+    
     const now = new Date();
     
-    // Добавляем небольшой буфер (5 минут) для учета разницы во времени
+    // Проверяем, что дата валидна
+    if (isNaN(expiryTime.getTime())) {
+      return true; // Невалидная дата, считаем истекшим
+    }
+    
+    // Добавляем небольшой буфер (5 минут) для учета разницы во времени и задержек
     const buffer = 5 * 60 * 1000; // 5 минут в миллисекундах
     
-    return expiryTime.getTime() < (now.getTime() + buffer);
+    // URL истек, если время истечения меньше текущего времени + буфер
+    const isExpired = expiryTime.getTime() < (now.getTime() + buffer);
+    
+    // Возвращаем результат проверки (не блокируем изображения, которые еще не истекли)
+    return isExpired;
   } catch (error) {
-    // Если не удалось распарсить URL, возвращаем false
-    console.warn('Не удалось проверить срок действия URL:', error);
-    return false;
+    // Если не удалось распарсить URL, не блокируем изображение
+    // Полагаемся на обработчик ошибок onError для обработки реальных ошибок загрузки
+    console.warn('Не удалось проверить срок действия URL:', url, error);
+    return false; // Не блокируем, пусть браузер попробует загрузить
   }
 }
 
@@ -125,7 +113,10 @@ function SafeImage({
   className = '', 
   containerClassName = '',
   showErrorPlaceholder = true,
-  onRegenerate
+  onRegenerate,
+  imageUnavailableText = 'Изображение недоступно',
+  linkExpiredText = 'Срок действия ссылки истёк',
+  regenerateText = 'Сгенерировать заново'
 }: { 
   src: string; 
   alt: string; 
@@ -133,83 +124,149 @@ function SafeImage({
   containerClassName?: string;
   showErrorPlaceholder?: boolean;
   onRegenerate?: () => void;
+  imageUnavailableText?: string;
+  linkExpiredText?: string;
+  regenerateText?: string;
 }) {
-  // Проверяем, истек ли URL при монтировании
-  const urlExpired = useMemo(() => isUrlExpired(src), [src]);
-  const [imageError, setImageError] = useState(urlExpired);
+  // Не проверяем URL заранее - пусть браузер попробует загрузить
+  // Реальные ошибки обработает onError
+  const [imageError, setImageError] = useState(false);
+  const prevSrcRef = useRef(src);
 
   // Всегда возвращаем один элемент (span обертка) для стабильности структуры DOM
   // Используем пустой data URL при ошибке, чтобы предотвратить повторные попытки загрузки
   const emptyImageDataUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"></svg>';
-  const imageSrc = (imageError || urlExpired) ? emptyImageDataUrl : src;
-  const prevSrcRef = useRef(src);
 
   // Сбрасываем ошибку при изменении src
   useEffect(() => {
     if (src && src !== prevSrcRef.current && src !== emptyImageDataUrl) {
-      const expired = isUrlExpired(src);
-      setImageError(expired);
+      setImageError(false); // Сбрасываем ошибку при изменении src
       prevSrcRef.current = src;
     }
-  }, [src]);
+  }, [src, emptyImageDataUrl]);
 
-  // Если URL истек, сразу показываем placeholder (не рендерим img, чтобы избежать ошибок)
-  if (urlExpired || imageError) {
-    if (showErrorPlaceholder) {
-      return (
-        <span className="inline-block">
-          <div className={`bg-slate-800/50 flex items-center justify-center ${containerClassName || 'w-full h-64'}`}>
-            <div className="text-center p-4">
-              <Eye className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-              <p className="text-gray-500 text-sm mb-1">Изображение недоступно</p>
-              <p className="text-gray-600 text-xs mb-3">Срок действия ссылки истёк</p>
-              {onRegenerate && (
-                <button
-                  onClick={onRegenerate}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded-lg transition-colors"
-                >
-                  Сгенерировать заново
-                </button>
-              )}
-            </div>
+
+  // Если URL истек или есть ошибка, не рендерим img вообще
+  // Но не блокируем слишком строго - пусть браузер попробует загрузить
+  // Реальные ошибки обработает onError
+  // if (currentUrlExpired || urlExpired || imageError) {
+  //   if (showErrorPlaceholder) {
+  //     return (
+  //       <span className="inline-block">
+  //         <div className={`bg-slate-800/50 flex items-center justify-center ${containerClassName || 'w-full h-64'}`}>
+  //           <div className="text-center p-4">
+  //             <Eye className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+  //             <p className="text-gray-500 text-sm mb-1">{t.aiAdvertising.toast.imageUnavailable}</p>
+  //             <p className="text-gray-600 text-xs mb-3">Срок действия ссылки истёк</p>
+  //             {onRegenerate && (
+  //               <button
+  //                 onClick={onRegenerate}
+  //                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded-lg transition-colors"
+  //               >
+  //                 Сгенерировать заново
+  //               </button>
+  //             )}
+  //           </div>
+  //         </div>
+  //       </span>
+  //     );
+  //   }
+  //   // Если не показываем placeholder, возвращаем пустой span
+  //   return <span className="inline-block" style={{ display: 'none' }} />;
+  // }
+  
+  // Показываем placeholder только если была реальная ошибка загрузки (imageError)
+  if (imageError && showErrorPlaceholder) {
+    return (
+      <span className="inline-block">
+        <div className={`bg-slate-800/50 flex items-center justify-center ${containerClassName || 'w-full h-64'}`}>
+          <div className="text-center p-4">
+            <Eye className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+            <p className="text-gray-500 text-sm mb-1">{imageUnavailableText}</p>
+            <p className="text-gray-600 text-xs mb-3">{linkExpiredText}</p>
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded-lg transition-colors"
+              >
+                {regenerateText}
+              </button>
+            )}
           </div>
-        </span>
-      );
-    }
-    // Если не показываем placeholder, возвращаем пустой span
+        </div>
+      </span>
+    );
+  }
+  
+  // Если ошибка, но не показываем placeholder, возвращаем пустой span
+  if (imageError) {
     return <span className="inline-block" style={{ display: 'none' }} />;
   }
+
 
   return (
     <span className="inline-block">
       <img 
-        src={imageSrc} 
+        src={src} 
         alt={alt}
         className={className}
         onError={(e) => {
-          // Подавляем ошибку в консоли для истекших URL
+          // Обрабатываем ошибки загрузки (включая 403 для истекших URL)
           const target = e.currentTarget;
-          const isExpired = isUrlExpired(src);
+          const imgSrc = target.src;
           
-          if (isExpired || !imageError) {
+          // Проверяем, является ли это Azure Blob Storage URL с ошибкой 403
+          const isAzureBlob = imgSrc.includes('blob.core.windows.net');
+          // Base64 и локальные uploads не истекают
+          const expired = (imgSrc.startsWith('data:') || imgSrc.includes('/uploads/'))
+            ? false
+            : isUrlExpired(imgSrc);
+          
+          if (isAzureBlob || expired) {
             setImageError(true);
             // Останавливаем дальнейшие попытки загрузки
             target.src = emptyImageDataUrl;
             // Предотвращаем всплытие ошибки в консоль
             e.preventDefault();
             e.stopPropagation();
-            // Очищаем src, чтобы браузер не пытался загрузить снова
+            // Очищаем src немедленно, чтобы браузер не пытался загрузить снова
             setTimeout(() => {
-              target.src = emptyImageDataUrl;
+              if (target.src !== emptyImageDataUrl) {
+                target.src = emptyImageDataUrl;
+              }
             }, 0);
+            // Подавляем ошибку в консоли для истекших URL
+            return false;
+          } else {
+            // Для других ошибок также устанавливаем ошибку
+            // Но не блокируем base64 и локальные uploads
+            if (!imgSrc.startsWith('data:') && !imgSrc.includes('/uploads/')) {
+              setImageError(true);
+              target.src = emptyImageDataUrl;
+            }
           }
         }}
-        onLoadStart={() => {
+        onLoadStart={(e) => {
           // Дополнительная проверка перед началом загрузки
-          if (isUrlExpired(src)) {
+          // Base64 и локальные uploads не истекают
+          const expired = (src.startsWith('data:') || src.includes('/uploads/'))
+            ? false
+            : isUrlExpired(src);
+          if (expired) {
             setImageError(true);
+            // Немедленно останавливаем загрузку
+            const target = e.currentTarget;
+            target.src = emptyImageDataUrl;
+            // Отменяем загрузку
+            target.loading = 'lazy';
           }
         }}
+        // Добавляем обработчик для перехвата ошибок до того, как они попадут в консоль
+        onAbort={() => {
+          setImageError(true);
+        }}
+        // Используем loading="lazy" для отложенной загрузки
+        loading="lazy"
       />
     </span>
   );
@@ -220,34 +277,39 @@ function CampaignImage({
   imageUrl, 
   campaignName,
   onRegenerate,
-  isRegenerating
+  isRegenerating,
+  t
 }: { 
   imageUrl: string; 
   campaignName: string;
   onRegenerate?: () => void;
   isRegenerating?: boolean;
+  t: typeof import('../lib/translations').translations['🇷🇺 RU'];
 }) {
   return (
     <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50">
       <div className="flex items-center gap-2 mb-4">
         <Eye className="w-5 h-5 text-yellow-400" />
-        <h4 className="text-white font-semibold text-sm">Изображение объявления</h4>
+        <h4 className="text-white font-semibold text-sm">{t.aiAdvertising.form.adImage}</h4>
       </div>
       <div className="rounded-lg overflow-hidden border border-slate-700/30">
         {isRegenerating ? (
           <div className="w-full min-h-64 bg-slate-800/50 flex items-center justify-center">
             <div className="text-center">
               <Loader2 className="w-12 h-12 text-blue-500 mx-auto mb-2 animate-spin" />
-              <p className="text-gray-400 text-sm">Генерация изображения...</p>
+              <p className="text-gray-400 text-sm">{t.aiAdvertising.form.generatingImage}</p>
             </div>
           </div>
         ) : (
           <SafeImage 
             src={imageUrl}
-            alt={`Объявление ${campaignName}`}
+            alt={`${t.aiAdvertising.form.adImage} ${campaignName}`}
             className="w-full h-auto max-h-96 object-cover"
             containerClassName="w-full min-h-64"
             onRegenerate={onRegenerate}
+            imageUnavailableText={t.aiAdvertising.toast.imageUnavailable}
+            linkExpiredText={t.aiAdvertising.toast.linkExpired}
+            regenerateText={t.aiAdvertising.toast.regenerateImage}
           />
         )}
       </div>
@@ -256,8 +318,52 @@ function CampaignImage({
 }
 
 export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
+  const { t } = useLanguage();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Временная функция валидации (заменяет zod)
+  const validateCampaignForm = (data: CampaignFormData) => {
+    const errors: Record<string, { message: string }> = {};
+
+    if (!data.name || data.name.trim().length < 3) {
+      errors.name = { message: t.aiAdvertising.validation.nameMinLength };
+    } else if (data.name.trim().length > 100) {
+      errors.name = { message: t.aiAdvertising.validation.nameMaxLength };
+    }
+
+    if (!data.platforms || data.platforms.length === 0) {
+      errors.platforms = { message: t.aiAdvertising.validation.selectPlatform };
+    }
+
+    if (!data.budget || data.budget.trim().length === 0) {
+      errors.budget = { message: t.aiAdvertising.validation.budgetRequired };
+    } else {
+      const budgetNum = parseFloat(data.budget.replace(/[^\d.]/g, ''));
+      if (isNaN(budgetNum) || budgetNum <= 0) {
+        errors.budget = { message: t.aiAdvertising.validation.budgetPositive };
+      } else if (budgetNum < 1000) {
+        errors.budget = { message: t.aiAdvertising.validation.budgetMin };
+      }
+    }
+
+    if (!data.phone || data.phone.trim().length === 0) {
+      errors.phone = { message: t.aiAdvertising.validation.phoneRequired };
+    } else {
+      const phoneRegex = /^[\d\s()+-]+$/;
+      if (!phoneRegex.test(data.phone)) {
+        errors.phone = { message: t.aiAdvertising.validation.phoneInvalidFormat };
+      } else if (data.phone.replace(/\D/g, '').length < 10) {
+        errors.phone = { message: t.aiAdvertising.validation.phoneMinLength };
+      }
+    }
+
+    if (data.location && data.location.length > 200) {
+      errors.location = { message: t.aiAdvertising.validation.locationMaxLength };
+    }
+
+    return Object.keys(errors).length === 0 ? undefined : errors;
+  };
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
   const [isDuplicating, setIsDuplicating] = useState<number | null>(null);
   const [isTogglingStatus, setIsTogglingStatus] = useState<number | null>(null);
@@ -277,6 +383,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [adDescription, setAdDescription] = useState<string>('');
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadedImageFile, setUploadedImageFile] = useState<File | null>(null);
   const [regeneratingImageCampaignId, setRegeneratingImageCampaignId] = useState<number | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
   const [isRegeneratingImageInEdit, setIsRegeneratingImageInEdit] = useState(false);
@@ -298,6 +406,94 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Определяем функции загрузки ДО их использования в useEffect
+  const loadCampaignsFromAPI = async () => {
+    const data = await campaignsAPI.getAll();
+    setCampaigns(data);
+    // Сохраняем в кэш
+    setCache(cacheKeys.campaigns, data);
+    setIsLoading(false);
+  };
+
+  const loadCampaigns = async (useCache = true) => {
+    try {
+      setIsLoading(true);
+      
+      // Проверяем кэш
+      if (useCache) {
+        const cached = getCache<Campaign[]>(cacheKeys.campaigns);
+        if (cached) {
+          setCampaigns(cached);
+          setIsLoading(false);
+          // Загружаем свежие данные в фоне для обновления
+          loadCampaignsFromAPI();
+          return;
+        }
+      }
+      
+      // Загружаем из API
+      await loadCampaignsFromAPI();
+    } catch (error: any) {
+      console.error('Ошибка загрузки кампаний:', error);
+      // Пытаемся использовать кэш при ошибке
+      const cached = getCache<Campaign[]>(cacheKeys.campaigns);
+      if (cached) {
+        setCampaigns(cached);
+        // Показываем предупреждение, если это сетевая ошибка
+        if (error instanceof APIError && error.isNetworkError) {
+          showToast(t.aiAdvertising.toast.cacheUsed, 'info');
+        }
+      } else {
+        const errorMessage = error instanceof APIError 
+          ? error.message 
+          : (error.message || t.crm.errors.loadData);
+        showToast(errorMessage, 'error');
+        setCampaigns([]);
+      }
+      setIsLoading(false);
+    }
+  };
+
+  // Глобальный обработчик ошибок изображений для подавления 403 ошибок от истекших URL
+  useEffect(() => {
+    const handleImageError = (event: ErrorEvent) => {
+      // Проверяем, является ли это ошибкой загрузки изображения Azure Blob Storage
+      if (event.target && event.target instanceof HTMLImageElement) {
+        const img = event.target as HTMLImageElement;
+        const src = img.src;
+        
+        // Если это Azure Blob Storage URL, проверяем истек ли он или это ошибка 403
+        if (src.includes('blob.core.windows.net')) {
+          const expired = isUrlExpired(src);
+          // Если URL истек или это ошибка 403 (Server failed to authenticate), подавляем ошибку
+          if (expired || event.message?.includes('403') || event.message?.includes('authenticate')) {
+            event.preventDefault();
+            event.stopPropagation();
+            // Устанавливаем пустой data URL, чтобы предотвратить повторные попытки
+            img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+            return false;
+          }
+        }
+      }
+    };
+
+    // Добавляем обработчик на window для перехвата всех ошибок изображений
+    window.addEventListener('error', handleImageError, true);
+    
+    // Также перехватываем ошибки через unhandledrejection для fetch ошибок
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('403') || event.reason?.message?.includes('authenticate')) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('error', handleImageError, true);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
 
   // Загрузка кампаний при монтировании компонента
   useEffect(() => {
@@ -353,53 +549,6 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       window.removeEventListener('error', handleImageError, true);
     };
   }, []);
-
-  const loadCampaigns = async (useCache = true) => {
-    try {
-      setIsLoading(true);
-      
-      // Проверяем кэш
-      if (useCache) {
-        const cached = getCache<Campaign[]>(cacheKeys.campaigns);
-        if (cached) {
-          setCampaigns(cached);
-          setIsLoading(false);
-          // Загружаем свежие данные в фоне для обновления
-          loadCampaignsFromAPI();
-          return;
-        }
-      }
-      
-      // Загружаем из API
-      await loadCampaignsFromAPI();
-    } catch (error: any) {
-      console.error('Ошибка загрузки кампаний:', error);
-      // Пытаемся использовать кэш при ошибке
-      const cached = getCache<Campaign[]>(cacheKeys.campaigns);
-      if (cached) {
-        setCampaigns(cached);
-        // Показываем предупреждение, если это сетевая ошибка
-        if (error instanceof APIError && error.isNetworkError) {
-          showToast('Используются данные из кэша. Сервер недоступен.', 'info');
-        }
-      } else {
-        const errorMessage = error instanceof APIError 
-          ? error.message 
-          : (error.message || 'Не удалось загрузить кампании');
-        showToast(errorMessage, 'error');
-        setCampaigns([]);
-      }
-      setIsLoading(false);
-    }
-  };
-
-  const loadCampaignsFromAPI = async () => {
-    const data = await campaignsAPI.getAll();
-    setCampaigns(data);
-    // Сохраняем в кэш
-    setCache(cacheKeys.campaigns, data);
-    setIsLoading(false);
-  };
   
   // React Hook Form для создания кампании
   const createForm = useForm<CampaignFormData>({
@@ -420,18 +569,18 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
   const adCards = [
     {
-      title: 'Создать рекламное объявление',
-      description: 'AI поможет создать эффективный текст, подобрать изображение и запустит рекламу сразу на всех платформах',
+      title: t.aiAdvertising.titles.createAd,
+      description: t.aiAdvertising.descriptions.createAd,
       icon: <Target className="w-8 h-8" />,
       gradient: 'from-blue-500 to-cyan-500',
       onClick: () => setShowCreateModal(true),
     },
     {
-      title: 'Оптимизация кампаний',
-      description: 'AI анализирует метрики и дает рекомендации по улучшению результатов',
+      title: t.aiAdvertising.titles.optimizeCampaigns,
+      description: t.aiAdvertising.descriptions.optimizeCampaigns,
       icon: <TrendingUp className="w-8 h-8" />,
       gradient: 'from-yellow-400 to-amber-500',
-      onClick: () => showToast('Функция в разработке', 'info'),
+      onClick: () => showToast(t.aiAdvertising.toast.functionInDevelopment, 'info'),
     },
   ];
 
@@ -450,7 +599,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       const budgetNum = parseFloat(budget.replace(/[^\d.]/g, ''));
       
       if (isNaN(budgetNum) || budgetNum < 1000) {
-        throw new Error('Бюджет должен быть не менее 1000');
+        throw new Error(t.aiAdvertising.messages.budgetMinError);
       }
       
       // Вызываем AI API для подбора аудитории
@@ -498,12 +647,12 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       console.error('Ошибка при подборе аудитории:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось подобрать аудиторию');
+        : (error.message || t.aiAdvertising.toast.fillFieldsForAudience);
       showToast(errorMessage, 'error');
       
       // Fallback на базовую логику при ошибке
       const fallbackAudience: AIAudienceResponse = {
-        interests: ['Бизнес', 'Технологии', 'Образование'],
+        interests: [t.aiAdvertising.interests.business, t.aiAdvertising.interests.technology, t.aiAdvertising.interests.education],
         ageRange: '25-45',
         platforms: [...platforms],
       };
@@ -532,7 +681,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       console.error('Ошибка при генерации изображения:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось сгенерировать изображение');
+        : (error.message || t.aiAdvertising.toast.imageGenerationError);
       showToast(errorMessage, 'error');
       return null;
     } finally {
@@ -544,7 +693,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const regenerateCampaignImage = async (campaignIndex: number) => {
     const campaign = campaigns[campaignIndex];
     if (!campaign.id) {
-      showToast('Кампания не может быть обновлена', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeUpdated, 'error');
       return;
     }
 
@@ -575,13 +724,13 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
           return updated;
         });
         
-        showToast('Изображение успешно обновлено!', 'success');
+        showToast(t.aiAdvertising.toast.imageUpdated, 'success');
       }
     } catch (error: any) {
       console.error('Ошибка при регенерации изображения:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось регенерировать изображение');
+        : (error.message || t.aiAdvertising.toast.imageRegenerationError);
       showToast(errorMessage, 'error');
     } finally {
       setRegeneratingImageCampaignId(null);
@@ -619,11 +768,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const toggleCampaignStatus = async (index: number) => {
     const campaign = campaigns[index];
     if (!campaign.id) {
-      showToast('Кампания не может быть обновлена', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeUpdated, 'error');
       return;
     }
 
-    const newStatus = campaign.status === 'Активна' ? 'На паузе' : 'Активна';
+    const newStatus = campaign.status === t.aiAdvertising.status.active ? t.aiAdvertising.status.paused : t.aiAdvertising.status.active;
     setIsTogglingStatus(campaign.id);
     
     try {
@@ -639,16 +788,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       });
       
       showToast(
-        campaign.status === 'Активна' 
-          ? `Кампания "${campaign.name}" приостановлена` 
-          : `Кампания "${campaign.name}" возобновлена`,
+        campaign.status === t.aiAdvertising.status.active 
+          ? t.aiAdvertising.toast.campaignPaused.replace('{name}', campaign.name)
+          : t.aiAdvertising.toast.campaignResumed.replace('{name}', campaign.name),
         'success'
       );
     } catch (error: any) {
       console.error('Ошибка обновления статуса:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось обновить статус кампании');
+        : (error.message || t.aiAdvertising.toast.campaignStatusUpdateError);
       showToast(errorMessage, 'error');
     } finally {
       setIsTogglingStatus(null);
@@ -670,7 +819,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const handleDeleteClick = (index: number) => {
     const campaign = campaigns[index];
     if (!campaign.id) {
-      showToast('Кампания не может быть удалена', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeDeleted, 'error');
       setOpenMenuIndex(null);
       return;
     }
@@ -684,7 +833,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
     
     const campaign = campaigns[campaignToDelete];
     if (!campaign.id) {
-      showToast('Кампания не может быть удалена', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeDeleted, 'error');
       setDeleteConfirmOpen(false);
       setCampaignToDelete(null);
       return;
@@ -700,14 +849,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         setCache(cacheKeys.campaigns, updated);
         return updated;
       });
-      showToast(`Кампания "${campaign.name}" удалена`, 'success');
+      showToast(t.aiAdvertising.messages.campaignDeleted.replace('{name}', campaign.name), 'success');
       setDeleteConfirmOpen(false);
       setCampaignToDelete(null);
     } catch (error: any) {
       console.error('Ошибка удаления кампании:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось удалить кампанию');
+        : (error.message || t.aiAdvertising.messages.deleteError);
       showToast(errorMessage, 'error');
     } finally {
       setIsDeleting(null);
@@ -717,7 +866,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const openEditModal = (index: number) => {
     const campaign = campaigns[index];
     if (!campaign.id) {
-      showToast('Кампания не может быть отредактирована', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeEdited, 'error');
       setOpenMenuIndex(null);
       return;
     }
@@ -757,7 +906,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
     const campaign = campaigns[editingCampaignIndex];
     if (!campaign.id) {
-      showToast('Кампания не может быть обновлена', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeUpdated, 'error');
       return;
     }
 
@@ -822,12 +971,12 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       setEditingImageUrl(null);
       editForm.reset();
       setEditingDescription('');
-      showToast(`Кампания "${data.name}" успешно обновлена`, 'success');
+      showToast(t.aiAdvertising.messages.campaignUpdated.replace('{name}', data.name), 'success');
     } catch (error: any) {
       console.error('Ошибка обновления кампании:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось обновить кампанию');
+        : (error.message || t.aiAdvertising.messages.updateError);
       showToast(errorMessage, 'error');
     }
   };
@@ -835,7 +984,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const duplicateCampaign = async (index: number) => {
     const campaign = campaigns[index];
     if (!campaign.id) {
-      showToast('Кампания не может быть скопирована', 'error');
+      showToast(t.aiAdvertising.toast.campaignCannotBeCopied, 'error');
       return;
     }
     setIsDuplicating(campaign.id);
@@ -845,7 +994,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       const duplicatedData = {
         name: `${campaign.name} (копия)`,
         platforms: campaign.platforms,
-        status: 'На паузе',
+        status: t.aiAdvertising.status.paused,
         budget: campaign.budget,
         spent: '₸0',
         conversions: 0,
@@ -861,12 +1010,12 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         setCache(cacheKeys.campaigns, updated);
         return updated;
       });
-      showToast(`Кампания "${campaign.name}" скопирована`, 'success');
+      showToast(t.aiAdvertising.messages.campaignCopied.replace('{name}', campaign.name), 'success');
     } catch (error: any) {
       console.error('Ошибка копирования кампании:', error);
       const errorMessage = error instanceof APIError 
         ? error.message 
-        : (error.message || 'Не удалось скопировать кампанию');
+        : (error.message || t.aiAdvertising.messages.copyError);
       showToast(errorMessage, 'error');
     } finally {
       setIsDuplicating(null);
@@ -915,16 +1064,52 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       // Используем generatedAdText если он есть, иначе берем из audience
       const finalAdText = generatedAdText?.trim() || audience?.adText?.trim() || adDescription?.trim() || null;
       
+      // Загружаем изображение через API на сервер, если оно было загружено пользователем
+      let finalImageUrl: string | null = null;
+      if (uploadedImageFile && uploadedImageUrl) {
+        try {
+          showToast('Загрузка изображения...', 'info');
+          
+          // Отправляем base64 изображение на сервер для обработки
+          const { request } = await import('../lib/api');
+          const uploadResponse = await request<{ imageUrl: string }>('/api/campaigns/upload-image', {
+            method: 'POST',
+            body: JSON.stringify({
+              image: uploadedImageUrl, // base64 data URL
+              fileName: uploadedImageFile.name,
+              contentType: uploadedImageFile.type || 'image/jpeg',
+            }),
+          });
+          
+          if (!uploadResponse.imageUrl) {
+            throw new Error('Сервер не вернул URL изображения');
+          }
+          
+          finalImageUrl = uploadResponse.imageUrl;
+          console.log('Изображение загружено, URL:', finalImageUrl);
+        } catch (error: any) {
+          console.error('Ошибка загрузки изображения:', error);
+          // Если не удалось загрузить на сервер, используем base64 напрямую
+          console.warn('Используем base64 изображение напрямую');
+          finalImageUrl = uploadedImageUrl;
+          showToast(t.aiAdvertising.toast.imageSavedBase64, 'info');
+        }
+      } else if (generatedImageUrl) {
+        // Используем сгенерированное изображение (уже имеет URL)
+        finalImageUrl = generatedImageUrl;
+      }
+      
       const campaignData = {
         name: data.name.trim(),
         platforms: data.platforms,
-        status: 'На проверке',
+        status: t.aiAdvertising.status.onReview,
         budget: budgetValue,
         spent: 0, // Отправляем как число, а не строку
         conversions: 0,
         ...(phoneValue && { phone: phoneValue }),
         ...(locationValue && { location: locationValue }),
-        ...(generatedImageUrl && { imageUrl: generatedImageUrl }),
+        // Используем загруженное или сгенерированное изображение
+        ...(finalImageUrl && { imageUrl: finalImageUrl }),
         ...(audience && {
           audience: {
             ...audience,
@@ -948,9 +1133,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       setSelectedAudience(null);
       setGeneratedAdText('');
       setGeneratedImageUrl(null);
+      setUploadedImageUrl(null);
+      setUploadedImageFile(null);
       setAdDescription('');
       
-      const successMessage = `Кампания "${data.name.trim()}" отправлена на проверку. Мы проверим её и активируем в ближайшее время.`;
+      const successMessage = t.aiAdvertising.messages.campaignSentForReview.replace('{name}', data.name.trim());
       showToast(successMessage, 'info');
     } catch (error: any) {
       console.error('Ошибка создания кампании:', error);
@@ -972,7 +1159,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         
         showToast(errorMessage, 'error');
       } else {
-        const errorMessage = error.message || 'Не удалось создать кампанию';
+        const errorMessage = error.message || t.aiAdvertising.messages.createError;
         showToast(errorMessage, 'error');
       }
     }
@@ -1123,7 +1310,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Action Cards */}
         <div className="mb-8">
-          <h2 className="text-white mb-6">Инструменты</h2>
+          <h2 className="text-white mb-6">{t.aiAdvertising.toolsSection}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {adCards.map((card, index) => (
               <button
@@ -1143,7 +1330,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
         {/* Metrics Overview */}
         <div className="mb-8">
-          <h2 className="text-white mb-6">Ключевые метрики</h2>
+          <h2 className="text-white mb-6">{t.aiAdvertising.keyMetrics}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {metrics.map((metric, index) => (
               <div
@@ -1170,19 +1357,18 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               <Sparkles className="w-6 h-6 text-purple-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-white mb-2">Рекомендация AI по оптимизации</h3>
+              <h3 className="text-white mb-2">{t.aiAdvertising.recommendations.title}</h3>
               <p className="text-gray-300 mb-4">
-                Ваша кампания "Летняя распродажа" показывает отличный CTR. Рекомендуем увеличить бюджет на 20% и 
-                расширить аудиторию на возрастную группу 25-34 года для повышения конверсий на 15-20%.
+                {t.aiAdvertising.recommendations.example}
               </p>
               <div className="flex gap-2 sm:gap-3 flex-wrap">
                 <button
-                  onClick={() => showToast('Рекомендация применена', 'success')}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl transition-colors text-sm sm:text-base"
+                  onClick={() => showToast(t.aiAdvertising.messages.recommendationApplied, 'success')}
+                  className="px-4 sm:px-4 py-3 sm:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl transition-colors text-sm sm:text-base min-h-[44px] sm:min-h-0"
                 >
                   Применить рекомендацию
                 </button>
-                <button className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base">
+                <button className="px-4 sm:px-4 py-3 sm:py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base min-h-[44px] sm:min-h-0">
                   Узнать больше
                 </button>
               </div>
@@ -1196,11 +1382,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
             <h2 className="text-white">Активные кампании</h2>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-3 sm:px-4 py-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 text-sm sm:text-base"
+              className="px-4 sm:px-4 py-3 sm:py-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow flex items-center gap-2 text-sm sm:text-base min-h-[44px] sm:min-h-0"
             >
               <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">Создать кампанию</span>
-              <span className="sm:hidden">Создать</span>
+              <span className="hidden sm:inline">{t.aiAdvertising.form.createCampaign}</span>
+              <span className="sm:hidden">{t.aiAdvertising.form.create}</span>
             </button>
           </div>
 
@@ -1245,7 +1431,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                   className="px-2 sm:px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-gray-400 hover:text-white transition-colors"
-                  title={sortOrder === 'asc' ? 'По возрастанию' : 'По убыванию'}
+                  title={sortOrder === 'asc' ? t.aiAdvertising.sort.ascending : t.aiAdvertising.sort.descending}
                 >
                   <ArrowUpDown className="w-4 h-4" />
                 </button>
@@ -1262,13 +1448,13 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500/50"
                   >
-                    <option value="all">Все</option>
-                    <option value="Активна">Активна</option>
-                    <option value="На паузе">На паузе</option>
+                    <option value="all">{t.aiAdvertising.status.all}</option>
+                    <option value={t.aiAdvertising.status.active}>{t.aiAdvertising.status.active}</option>
+                    <option value={t.aiAdvertising.status.paused}>{t.aiAdvertising.status.paused}</option>
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-400">Платформа:</span>
+                  <span className="text-gray-400">{t.aiAdvertising.form.platforms}:</span>
                   <select
                     value={platformFilter}
                     onChange={(e) => setPlatformFilter(e.target.value)}
@@ -1311,7 +1497,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 onClick={() => setShowCreateModal(true)}
                 className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow text-sm sm:text-base"
               >
-                Создать первую кампанию
+                {t.aiAdvertising.form.createFirstCampaign}
               </button>
             </div>
           ) : filteredAndSortedCampaigns.length === 0 ? (
@@ -1323,7 +1509,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   setStatusFilter('all');
                   setPlatformFilter('all');
                 }}
-                className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base"
+                className="px-5 sm:px-6 py-3 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base min-h-[44px] sm:min-h-0"
               >
                 Сбросить фильтры
               </button>
@@ -1360,11 +1546,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           <div className="flex items-center gap-3 mb-4 flex-wrap">
                             <h3 className="text-white text-xl font-bold break-words">{campaign.name}</h3>
                             <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
-                              campaign.status === 'Активна'
+                              campaign.status === t.aiAdvertising.status.active
                                 ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                                 : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                             }`}>
-                              {campaign.status === 'Активна' ? (
+                              {campaign.status === t.aiAdvertising.status.active ? (
                                 <>
                                   <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
                                   {campaign.status}
@@ -1414,7 +1600,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   <div className="bg-slate-900/40 rounded-xl p-5 border border-slate-700/50 mb-6">
                     <div className="flex items-center gap-2 mb-4">
                       <DollarSign className="w-5 h-5 text-yellow-400" />
-                      <h4 className="text-white font-semibold text-sm">Бюджет кампании</h4>
+                      <h4 className="text-white font-semibold text-sm">{t.aiAdvertising.form.budget}</h4>
                     </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mb-4">
@@ -1522,7 +1708,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
                         <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-xs font-medium flex items-center gap-1 sm:gap-1.5 w-full sm:w-auto">
                           <Target className="w-3 h-3 flex-shrink-0" />
-                          <span className="whitespace-nowrap">{campaign.audience.ageRange} лет</span>
+                          <span className="whitespace-nowrap">{campaign.audience.ageRange} {t.aiAdvertising.form.years}</span>
                         </span>
                         {campaign.audience.interests.slice(0, 4).map((interest, idx) => (
                           <span key={idx} className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium whitespace-nowrap w-full sm:w-auto">
@@ -1693,16 +1879,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       {campaign.audience ? (
                         <div className="space-y-2">
                           <div>
-                            <span className="text-gray-400 text-sm">Возраст: </span>
-                            <span className="text-white font-semibold">{campaign.audience.ageRange} лет</span>
+                            <span className="text-gray-400 text-sm">{t.aiAdvertising.form.ageRange} </span>
+                            <span className="text-white font-semibold">{campaign.audience.ageRange} {t.aiAdvertising.form.years}</span>
                           </div>
                           <div className="min-w-0">
-                            <span className="text-gray-400 text-sm">Интересы: </span>
+                            <span className="text-gray-400 text-sm">{t.aiAdvertising.form.interests} </span>
                             <span className="text-white text-sm break-words">{campaign.audience.interests.slice(0, 3).join(', ')}</span>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-400 text-sm">Информация об аудитории отсутствует</p>
+                        <p className="text-gray-400 text-sm">{t.aiAdvertising.form.noAudienceInfo}</p>
                       )}
                     </div>
                   </div>
@@ -1736,11 +1922,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap min-w-0">
                         <h3 className="text-white text-lg sm:text-2xl font-bold break-words flex-1 min-w-0">{campaign.name}</h3>
                         <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
-                          campaign.status === 'Активна'
+                          campaign.status === t.aiAdvertising.status.active
                             ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                             : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                         }`}>
-                          {campaign.status === 'Активна' ? (
+                          {campaign.status === t.aiAdvertising.status.active ? (
                             <>
                               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
                               {campaign.status}
@@ -1806,6 +1992,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         campaignName={campaign.name}
                         onRegenerate={() => regenerateCampaignImage(detailCampaignIndex)}
                         isRegenerating={campaign.id === regeneratingImageCampaignId}
+                        t={t}
                       />
                     )}
 
@@ -1815,7 +2002,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
                         <div className="flex items-center gap-2 mb-4">
                           <DollarSign className="w-5 h-5 text-yellow-400 flex-shrink-0" />
-                          <h4 className="text-white font-semibold text-sm">Бюджет кампании</h4>
+                          <h4 className="text-white font-semibold text-sm">{t.aiAdvertising.form.budget}</h4>
                         </div>
                         <div className="space-y-3">
                           <div className="flex justify-between items-center gap-2 min-w-0">
@@ -1923,11 +2110,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         </div>
                         <div className="space-y-4 min-w-0">
                           <div className="min-w-0">
-                            <span className="text-gray-400 text-xs sm:text-sm">Возраст: </span>
-                            <span className="text-white font-semibold text-xs sm:text-sm break-words">{campaign.audience.ageRange} лет</span>
+                            <span className="text-gray-400 text-xs sm:text-sm">{t.aiAdvertising.form.ageRange} </span>
+                            <span className="text-white font-semibold text-xs sm:text-sm break-words">{campaign.audience.ageRange} {t.aiAdvertising.form.years}</span>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-gray-400 text-xs sm:text-sm mb-2">Интересы:</p>
+                            <p className="text-gray-400 text-xs sm:text-sm mb-2">{t.aiAdvertising.form.interests}</p>
                             <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
                               {campaign.audience.interests.map((interest, idx) => (
                                 <span 
@@ -1941,7 +2128,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           </div>
                           {campaign.audience.platforms && campaign.audience.platforms.length > 0 && (
                             <div className="min-w-0">
-                              <p className="text-gray-400 text-xs sm:text-sm mb-2">Платформы:</p>
+                              <p className="text-gray-400 text-xs sm:text-sm mb-2">{t.aiAdvertising.form.platforms}</p>
                               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1.5 sm:gap-2 min-w-0">
                                 {campaign.audience.platforms.map((platform, idx) => (
                                   <span 
@@ -1965,9 +2152,9 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           setDetailCampaignIndex(null);
                           openCampaignStats(detailCampaignIndex);
                         }}
-                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
+                        className="flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-4 py-3 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-sm sm:text-sm w-full sm:w-auto min-h-[44px] sm:min-h-0"
                       >
-                        <BarChart3 className="w-4 h-4 flex-shrink-0" />
+                        <BarChart3 className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
                         <span className="font-medium whitespace-nowrap">Статистика</span>
                       </button>
                       <button
@@ -1975,9 +2162,9 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           setDetailCampaignIndex(null);
                           openEditModal(detailCampaignIndex);
                         }}
-                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
+                        className="flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-4 py-3 sm:py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors text-sm sm:text-sm w-full sm:w-auto min-h-[44px] sm:min-h-0"
                       >
-                        <Sparkles className="w-4 h-4 flex-shrink-0" />
+                        <Sparkles className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
                         <span className="font-medium whitespace-nowrap">Редактировать</span>
                       </button>
                       <button
@@ -1985,17 +2172,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           setDetailCampaignIndex(null);
                           toggleCampaignStatus(detailCampaignIndex);
                         }}
-                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-700/50 hover:bg-slate-700 text-gray-300 rounded-lg transition-colors text-xs sm:text-sm w-full sm:w-auto"
+                        className="flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-4 py-3 sm:py-2 bg-slate-700/50 hover:bg-slate-700 text-gray-300 rounded-lg transition-colors text-sm sm:text-sm w-full sm:w-auto min-h-[44px] sm:min-h-0"
                       >
-                        {campaign.status === 'Активна' ? (
+                        {campaign.status === t.adminPanel.status.active ? (
                           <>
-                            <Pause className="w-4 h-4 flex-shrink-0" />
-                            <span className="font-medium whitespace-nowrap">Приостановить</span>
+                            <Pause className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span className="font-medium whitespace-nowrap">{t.adminPanel.wallet.pause}</span>
                           </>
                         ) : (
                           <>
-                            <Play className="w-4 h-4 flex-shrink-0" />
-                            <span className="font-medium whitespace-nowrap">Возобновить</span>
+                            <Play className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span className="font-medium whitespace-nowrap">{t.adminPanel.wallet.activate}</span>
                           </>
                         )}
                       </button>
@@ -2005,16 +2192,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           duplicateCampaign(detailCampaignIndex);
                         }}
                         disabled={isDuplicating === campaign.id || isDeleting === detailCampaignIndex}
-                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm w-full sm:w-auto"
+                        className="flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-4 py-3 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-sm w-full sm:w-auto min-h-[44px] sm:min-h-0"
                       >
                         {isDuplicating === campaign.id ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                            <Loader2 className="w-5 h-5 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
                             <span className="font-medium whitespace-nowrap">Копирование...</span>
                           </>
                         ) : (
                           <>
-                            <Target className="w-4 h-4 flex-shrink-0" />
+                            <Target className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
                             <span className="font-medium whitespace-nowrap">Дублировать</span>
                           </>
                         )}
@@ -2025,16 +2212,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           handleDeleteClick(detailCampaignIndex);
                         }}
                         disabled={isDeleting === detailCampaignIndex}
-                        className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm w-full sm:w-auto"
+                        className="flex items-center justify-center gap-2 sm:gap-2 px-4 sm:px-4 py-3 sm:py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-sm w-full sm:w-auto min-h-[44px] sm:min-h-0"
                       >
                         {isDeleting === detailCampaignIndex ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                            <Loader2 className="w-5 h-5 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
                             <span className="font-medium whitespace-nowrap">Удаление...</span>
                           </>
                         ) : (
                           <>
-                            <X className="w-4 h-4 flex-shrink-0" />
+                            <X className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0" />
                             <span className="font-medium whitespace-nowrap">Удалить</span>
                           </>
                         )}
@@ -2053,12 +2240,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white">Создать рекламную кампанию</h3>
+              <h3 className="text-white">{t.aiAdvertising.form.createTitle}</h3>
               <button
                 onClick={() => {
                   setShowCreateModal(false);
                   setIsSelectingAudience(false);
                   setSelectedAudience(null);
+                  setGeneratedImageUrl(null);
+                  setUploadedImageUrl(null);
+                  setUploadedImageFile(null);
+                  setAdDescription('');
                   createForm.reset();
                 }}
                 disabled={isSelectingAudience}
@@ -2070,16 +2261,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
             <form onSubmit={createForm.handleSubmit(handleCreateCampaign)} className="space-y-4">
               <div>
-                <label className="text-gray-400 mb-2 block">Название кампании <span className="text-red-400">*</span></label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.campaignName} <span className="text-red-400">*</span></label>
                 <input
                   type="text"
                   {...createForm.register('name', {
-                    required: 'Название кампании обязательно',
-                    minLength: { value: 3, message: 'Название кампании должно содержать минимум 3 символа' },
-                    maxLength: { value: 100, message: 'Название кампании не должно превышать 100 символов' },
-                    validate: (value) => value.trim().length >= 3 || 'Название кампании должно содержать минимум 3 символа',
+                    required: t.aiAdvertising.form.campaignNameRequired,
+                    minLength: { value: 3, message: t.aiAdvertising.validation.nameMinLength },
+                    maxLength: { value: 100, message: t.aiAdvertising.validation.nameMaxLength },
+                    validate: (value) => value.trim().length >= 3 || t.aiAdvertising.validation.nameMinLength,
                   })}
-                  placeholder="Например: Весенняя акция"
+                  placeholder={t.aiAdvertising.form.campaignNamePlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     createForm.formState.errors.name
                       ? 'border-red-500 focus:border-red-500'
@@ -2093,13 +2284,13 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-gray-400 block">Платформы <span className="text-red-400">*</span></label>
+                  <label className="text-gray-400 block">{t.aiAdvertising.form.platforms} <span className="text-red-400">*</span></label>
                   <button
                     type="button"
                     onClick={handleSelectAllPlatforms}
                     className="text-xs text-yellow-400 hover:text-yellow-300 px-3 py-1 rounded-lg hover:bg-yellow-400/10 transition-colors"
                   >
-                    {(createForm.watch('platforms') || []).length === availablePlatforms.length ? 'Снять все' : 'Выбрать все'}
+                    {(createForm.watch('platforms') || []).length === availablePlatforms.length ? t.aiAdvertising.platformActions.deselectAll : t.aiAdvertising.platformActions.selectAll}
                   </button>
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-2 sm:p-3">
@@ -2124,21 +2315,21 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </div>
 
               <div>
-                <label className="text-gray-400 mb-2 block">Номер телефона для связи <span className="text-red-400">*</span></label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.phone} <span className="text-red-400">*</span></label>
                 <input
                   type="tel"
                   {...createForm.register('phone', {
-                    required: 'Номер телефона обязателен',
+                    required: t.aiAdvertising.validation.phoneRequired,
                     pattern: {
                       value: /^[\d\s()+-]+$/,
-                      message: 'Неверный формат номера телефона',
+                      message: t.aiAdvertising.validation.phoneInvalidFormat,
                     },
                     validate: (value) => {
                       const digits = value.replace(/\D/g, '');
-                      return digits.length >= 10 || 'Номер телефона должен содержать минимум 10 цифр';
+                      return digits.length >= 10 || t.aiAdvertising.validation.phoneMinDigits;
                     },
                   })}
-                  placeholder="+7 (XXX) XXX-XX-XX"
+                  placeholder={t.aiAdvertising.form.phonePlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     createForm.formState.errors.phone
                       ? 'border-red-500 focus:border-red-500'
@@ -2148,17 +2339,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 {createForm.formState.errors.phone && (
                   <p className="text-red-400 text-xs mt-1">{createForm.formState.errors.phone.message}</p>
                 )}
-                <p className="text-gray-500 text-xs mt-1">Клиенты смогут связаться с вами по этому номеру</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.form.phoneDescription}</p>
               </div>
 
               <div>
-                <label className="text-gray-400 mb-2 block">Локация показа рекламы</label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.location}</label>
                 <input
                   type="text"
                   {...createForm.register('location', {
-                    maxLength: { value: 200, message: 'Локация не должна превышать 200 символов' },
+                    maxLength: { value: 200, message: t.aiAdvertising.validation.locationMaxLength },
                   })}
-                  placeholder="Например: Алматы, Астана, Казахстан или весь мир"
+                  placeholder={t.aiAdvertising.form.locationPlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     createForm.formState.errors.location
                       ? 'border-red-500 focus:border-red-500'
@@ -2176,14 +2367,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <input
                   type="number"
                   {...createForm.register('budget', {
-                    required: 'Бюджет обязателен',
+                    required: t.aiAdvertising.validation.budgetRequired,
                     validate: (value) => {
                       const num = parseFloat(value.replace(/[^\d.]/g, ''));
                       if (isNaN(num) || num <= 0) {
-                        return 'Бюджет должен быть положительным числом';
+                        return t.aiAdvertising.validation.budgetPositive;
                       }
                       if (num < 1000) {
-                        return 'Минимальный бюджет: ₸1,000';
+                        return t.aiAdvertising.validation.budgetMinValue;
                       }
                       return true;
                     },
@@ -2199,19 +2390,19 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 {createForm.formState.errors.budget && (
                   <p className="text-red-400 text-xs mt-1">{createForm.formState.errors.budget.message}</p>
                 )}
-                <p className="text-gray-500 text-xs mt-1">Минимальный бюджет: ₸1,000</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.validation.budgetMinValue}</p>
               </div>
 
               <div>
-                <label className="text-gray-400 mb-2 block">Краткое описание</label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.description}</label>
                 <textarea
                   value={adDescription}
                   onChange={(e) => setAdDescription(e.target.value)}
-                  placeholder="Опишите, что вы хотите рекламировать, какие преимущества выделить, какой стиль объявления предпочитаете..."
+                  placeholder={t.aiAdvertising.form.descriptionPlaceholder}
                   rows={4}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                 />
-                <p className="text-gray-500 text-xs mt-1">AI создаст точный текст объявления на основе вашего описания</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.form.aiDescription}</p>
               </div>
 
               <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-4">
@@ -2219,7 +2410,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   <Sparkles className="w-5 h-5 text-blue-400 flex-shrink-0 mt-1" />
                   <div className="flex-1">
                     <div className="text-gray-300 mb-3">
-                      AI автоматически подберет целевую аудиторию (интересы, возраст, платформы), оптимизирует ставки и создаст эффективное объявление
+                      {t.aiAdvertising.form.aiAnalysis}
                     </div>
                     <button
                       type="button"
@@ -2235,37 +2426,70 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             formData.location
                           );
                         } else {
-                          showToast('Заполните название, выберите платформы и укажите бюджет для подбора аудитории', 'info');
+                          showToast(t.aiAdvertising.toast.fillFieldsForAudience, 'info');
                         }
                       }}
                       disabled={isSelectingAudience}
                       className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-300 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       <Sparkles className="w-4 h-4" />
-                      {isSelectingAudience ? 'Анализ...' : 'Запустить AI анализ'}
+                      {isSelectingAudience ? t.aiAdvertising.form.analyzing : t.aiAdvertising.form.startAiAnalysis}
                     </button>
                     {isSelectingAudience && (
                       <div className="flex items-center gap-2 mt-3 text-blue-400">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                        <span className="text-sm">AI анализирует данные и подбирает оптимальную аудиторию...</span>
+                        <span className="text-sm">{t.aiAdvertising.form.analyzingAudience}</span>
                       </div>
                     )}
                     {selectedAudience && !isSelectingAudience && (
                       <div className="mt-3 pt-3 border-t border-blue-500/20 space-y-3">
                         <div>
-                          <p className="text-xs text-blue-300 mb-2 font-semibold">Подобранная аудитория:</p>
+                          <p className="text-xs text-blue-300 mb-2 font-semibold">{t.aiAdvertising.form.selectedAudience}</p>
                           <div className="space-y-1 text-xs text-gray-300">
-                            <p className="break-words"><span className="text-gray-400">Возраст:</span> {selectedAudience.ageRange} лет</p>
-                            <p className="break-words"><span className="text-gray-400">Интересы:</span> <span className="whitespace-normal">{selectedAudience.interests.join(', ')}</span></p>
-                            <p className="break-words"><span className="text-gray-400">Платформы:</span> <span className="whitespace-normal">{selectedAudience.platforms.join(', ')}</span></p>
+                            <p className="break-words"><span className="text-gray-400">{t.aiAdvertising.form.ageRange}</span> {selectedAudience.ageRange} {t.aiAdvertising.form.years}</p>
+                            <p className="break-words"><span className="text-gray-400">{t.aiAdvertising.form.interests}</span> <span className="whitespace-normal">{selectedAudience.interests.join(', ')}</span></p>
+                            <p className="break-words"><span className="text-gray-400">{t.aiAdvertising.form.platforms}</span> <span className="whitespace-normal">{selectedAudience.platforms.join(', ')}</span></p>
                             {selectedAudience.optimizedBid && (
-                              <p><span className="text-gray-400">Оптимальная ставка:</span> <span className="text-yellow-400 font-semibold">₸{selectedAudience.optimizedBid}</span></p>
+                              <p><span className="text-gray-400">{t.aiAdvertising.form.optimizedBid}</span> <span className="text-yellow-400 font-semibold">₸{selectedAudience.optimizedBid}</span></p>
                             )}
                           </div>
                         </div>
+                        {/* Редактируемый текст объявления */}
+                        {(generatedAdText?.trim() || selectedAudience?.adText?.trim()) && (
+                          <div className="mt-4 pt-3 border-t border-blue-500/20">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs text-blue-300 font-semibold">{t.aiAdvertising.form.adTextLabel}</p>
+                              {selectedAudience?.adText?.trim() && generatedAdText?.trim() !== selectedAudience?.adText?.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Сброс к исходному тексту от AI
+                                    if (selectedAudience?.adText?.trim()) {
+                                      setGeneratedAdText(selectedAudience.adText.trim());
+                                    }
+                                  }}
+                                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                  title="Вернуть исходный текст от AI"
+                                >
+                                  <span>Сбросить</span>
+                                </button>
+                              )}
+                            </div>
+                            <textarea
+                              value={generatedAdText || selectedAudience?.adText || ''}
+                              onChange={(e) => setGeneratedAdText(e.target.value)}
+                              placeholder={t.aiAdvertising.form.adTextPreview}
+                              rows={6}
+                              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50 resize-none text-sm"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Вы можете редактировать текст объявления перед созданием кампании
+                            </p>
                           </div>
                         )}
                       </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2274,56 +2498,129 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <div className="flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-purple-400 flex-shrink-0 mt-1" />
                   <div className="flex-1">
-                    <h4 className="text-purple-300 font-semibold mb-2">Изображение для объявления</h4>
+                    <h4 className="text-purple-300 font-semibold mb-2">{t.aiAdvertising.form.imageForAd}</h4>
                     <p className="text-gray-300 mb-3 text-sm">
-                      AI может создать профессиональное изображение для вашего объявления на основе названия и описания кампании
+                      {t.aiAdvertising.form.uploadImageDescription}
                     </p>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const formData = createForm.getValues();
-                        if (formData.name) {
-                          await generateAdImage(
-                            formData.name,
-                            undefined,
-                            adDescription || undefined
-                          );
-                        } else {
-                          showToast('Заполните название кампании для генерации изображения', 'info');
-                        }
-                      }}
-                      disabled={isGeneratingImage}
-                      className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-300 rounded-lg text-xs sm:text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2"
-                    >
-                      {isGeneratingImage ? (
-                        <span key="generating" className="flex items-center gap-1 sm:gap-2">
-                          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                          <span className="whitespace-nowrap">Генерация изображения...</span>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                      {/* Кнопка загрузки своего изображения */}
+                      <label className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-300 rounded-lg text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-1 sm:gap-2 flex-1 sm:flex-initial">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              // Проверяем размер файла (максимум 5MB)
+                              if (file.size > 5 * 1024 * 1024) {
+                                showToast('Размер файла не должен превышать 5MB', 'error');
+                                return;
+                              }
+                              // Проверяем тип файла
+                              if (!file.type.startsWith('image/')) {
+                                showToast('Пожалуйста, выберите файл изображения', 'error');
+                                return;
+                              }
+                              // Создаем URL для предпросмотра
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const result = event.target?.result;
+                                if (typeof result === 'string') {
+                                  setUploadedImageUrl(result);
+                                  setUploadedImageFile(file);
+                                  // Очищаем сгенерированное изображение, если было
+                                  setGeneratedImageUrl(null);
+                                }
+                              };
+                              reader.onerror = () => {
+                                showToast(t.aiAdvertising.messages.fileReadError, 'error');
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <span className="flex items-center gap-1 sm:gap-2">
+                          <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="whitespace-nowrap">{t.aiAdvertising.form.uploadImage}</span>
                         </span>
-                      ) : (
-                        <span key="generate" className="flex items-center gap-1 sm:gap-2">
-                          <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span className="whitespace-nowrap">Сгенерировать изображение AI</span>
-                        </span>
-                      )}
-                    </button>
-                    {generatedImageUrl && (
+                      </label>
+                      {/* Кнопка генерации AI */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const formData = createForm.getValues();
+                          if (formData.name) {
+                            await generateAdImage(
+                              formData.name,
+                              undefined,
+                              adDescription || undefined
+                            );
+                            // Очищаем загруженное изображение, если было
+                            setUploadedImageUrl(null);
+                            setUploadedImageFile(null);
+                          } else {
+                            showToast(t.aiAdvertising.toast.fillNameForImage, 'info');
+                          }
+                        }}
+                        disabled={isGeneratingImage}
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-300 rounded-lg text-xs sm:text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 sm:gap-2 flex-1 sm:flex-initial"
+                      >
+                        {isGeneratingImage ? (
+                          <span key="generating" className="flex items-center gap-1 sm:gap-2">
+                            <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                            <span className="whitespace-nowrap">{t.aiAdvertising.form.generating}</span>
+                          </span>
+                        ) : (
+                          <span key="generate" className="flex items-center gap-1 sm:gap-2">
+                            <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="whitespace-nowrap">{t.aiAdvertising.form.generateAi}</span>
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                    {/* Предпросмотр загруженного изображения */}
+                    {uploadedImageUrl && (
                       <div className="mt-4">
-                        <p className="text-xs text-purple-300 mb-2 font-semibold">Сгенерированное изображение:</p>
+                        <p className="text-xs text-blue-300 mb-2 font-semibold">{t.aiAdvertising.form.uploadedImage}</p>
                         <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3">
                           <SafeImage 
-                            src={generatedImageUrl} 
-                            alt="Сгенерированное изображение для объявления" 
+                            src={uploadedImageUrl} 
+                            alt={t.aiAdvertising.imageAlt.uploaded} 
                             className="w-full h-auto rounded-lg max-h-64 object-contain"
                             containerClassName="w-full h-64"
                           />
-                  </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploadedImageUrl(null);
+                            setUploadedImageFile(null);
+                          }}
+                          className="mt-2 text-xs text-red-400 hover:text-red-300"
+                        >
+                          {t.aiAdvertising.form.delete}
+                        </button>
+                      </div>
+                    )}
+                    {/* Предпросмотр сгенерированного изображения */}
+                    {generatedImageUrl && (
+                      <div className="mt-4">
+                        <p className="text-xs text-purple-300 mb-2 font-semibold">{t.aiAdvertising.form.generatedImage}:</p>
+                        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3">
+                          <SafeImage 
+                            src={generatedImageUrl} 
+                            alt={t.aiAdvertising.imageAlt.generated} 
+                            className="w-full h-auto rounded-lg max-h-64 object-contain"
+                            containerClassName="w-full h-64"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => setGeneratedImageUrl(null)}
                           className="mt-2 text-xs text-red-400 hover:text-red-300"
                         >
-                          Удалить изображение
+                          {t.aiAdvertising.form.delete}
                         </button>
                       </div>
                     )}
@@ -2332,15 +2629,15 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </div>
 
               {/* Предварительный просмотр объявления */}
-              {(generatedAdText?.trim() || selectedAudience?.adText?.trim() || generatedImageUrl || adDescription?.trim() || (createForm.watch('platforms') || []).length > 0) && (
+              {(generatedAdText?.trim() || selectedAudience?.adText?.trim() || generatedImageUrl || uploadedImageUrl || adDescription?.trim() || (createForm.watch('platforms') || []).length > 0) && (
                 <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
                       <Eye className="w-4 h-4 text-green-400" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-green-300 font-semibold mb-4">Предварительный просмотр объявления</h4>
-                      <p className="text-gray-300 mb-4 text-sm">Как будет выглядеть ваше объявление на выбранных платформах:</p>
+                      <h4 className="text-green-300 font-semibold mb-4">{t.aiAdvertising.form.previewAd}</h4>
+                      <p className="text-gray-300 mb-4 text-sm">{t.aiAdvertising.form.previewDescription}</p>
                       
                       <div className="space-y-6">
                         {(createForm.watch('platforms') || []).map((platform) => (
@@ -2354,10 +2651,10 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             {/* Instagram превью */}
                             {(platform === 'Instagram' || platform === 'Facebook') && (
                               <div className="bg-slate-800 text-white rounded-lg overflow-hidden w-full max-w-sm mx-auto">
-                                {generatedImageUrl ? (
+                                {(uploadedImageUrl || generatedImageUrl) ? (
                                   <SafeImage 
-                                    src={generatedImageUrl} 
-                                    alt="Превью объявления" 
+                                    src={uploadedImageUrl || generatedImageUrl || ''} 
+                                    alt={t.aiAdvertising.imageAlt.preview} 
                                     className="w-full aspect-square object-cover"
                                     showErrorPlaceholder={false}
                                   />
@@ -2391,7 +2688,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                                       );
                                     } else {
                                       return (
-                                        <p className="text-gray-400 text-sm italic">Текст объявления будет здесь</p>
+                                        <p className="text-gray-400 text-sm italic">{t.aiAdvertising.form.adTextPreview}</p>
                                       );
                                     }
                                   })()}
@@ -2402,10 +2699,10 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             {/* TikTok превью */}
                             {platform === 'TikTok' && (
                               <div className="relative bg-black rounded-lg overflow-hidden mx-auto w-full max-w-[300px] aspect-[9/16]">
-                                {generatedImageUrl ? (
+                                {(uploadedImageUrl || generatedImageUrl) ? (
                                   <SafeImage 
-                                    src={generatedImageUrl} 
-                                    alt="Превью объявления" 
+                                    src={uploadedImageUrl || generatedImageUrl || ''} 
+                                    alt={t.aiAdvertising.imageAlt.preview} 
                                     className="w-full h-full object-cover"
                                     showErrorPlaceholder={false}
                                   />
@@ -2442,10 +2739,10 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                             {/* YouTube превью */}
                             {platform === 'YouTube' && (
                               <div className="bg-slate-800 text-white rounded-lg overflow-hidden w-full max-w-2xl mx-auto">
-                                {generatedImageUrl ? (
+                                {(uploadedImageUrl || generatedImageUrl) ? (
                                   <SafeImage 
-                                    src={generatedImageUrl} 
-                                    alt="Превью объявления" 
+                                    src={uploadedImageUrl || generatedImageUrl || ''} 
+                                    alt={t.aiAdvertising.imageAlt.preview} 
                                     className="w-full aspect-video object-cover"
                                     showErrorPlaceholder={false}
                                   />
@@ -2489,14 +2786,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                                   {generatedImageUrl && (
                                     <SafeImage 
                                       src={generatedImageUrl} 
-                                      alt="Превью объявления" 
+                                      alt={t.aiAdvertising.imageAlt.preview} 
                                       className="w-24 h-24 object-cover rounded"
                                       showErrorPlaceholder={false}
                                     />
                                   )}
                                   <div className="flex-1 min-w-0">
                                     <h3 className="text-blue-400 font-semibold text-base mb-1 line-clamp-2 break-words">
-                                      {createForm.watch('name') || 'Название кампании'}
+                                      {createForm.watch('name') || t.aiAdvertising.form.campaignName}
                                     </h3>
                                     {(() => {
                                       const displayText = (generatedAdText?.trim() || selectedAudience?.adText?.trim() || '').trim();
@@ -2532,7 +2829,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                                 {generatedImageUrl ? (
                                   <SafeImage 
                                     src={generatedImageUrl} 
-                                    alt="Превью объявления" 
+                                    alt={t.aiAdvertising.imageAlt.preview} 
                                     className="w-full aspect-[4/3] object-cover"
                                     showErrorPlaceholder={false}
                                   />
@@ -2558,7 +2855,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                                       );
                                     } else {
                                       return (
-                                        <p className="text-gray-400 text-sm italic">Текст объявления будет здесь</p>
+                                        <p className="text-gray-400 text-sm italic">{t.aiAdvertising.form.adTextPreview}</p>
                                       );
                                     }
                                   })()}
@@ -2572,7 +2869,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                                 {generatedImageUrl ? (
                                   <img 
                                     src={generatedImageUrl} 
-                                    alt="Превью объявления" 
+                                    alt={t.aiAdvertising.imageAlt.preview} 
                                     className="w-full aspect-square object-cover"
                                   />
                                 ) : (
@@ -2614,7 +2911,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       </div>
                       
                       {(createForm.watch('platforms') || []).length === 0 && (
-                        <p className="text-gray-400 text-sm">Выберите платформы для просмотра превью</p>
+                        <p className="text-gray-400 text-sm">{t.aiAdvertising.form.selectPlatformsForPreview}</p>
                       )}
                     </div>
                   </div>
@@ -2627,7 +2924,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   disabled={isSelectingAudience || createForm.formState.isSubmitting}
                   className="flex-1 min-w-0 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
-                  {isSelectingAudience ? 'Подбор аудитории...' : createForm.formState.isSubmitting ? 'Создание...' : 'Создать кампанию'}
+                  {isSelectingAudience ? t.aiAdvertising.form.selectAudience : createForm.formState.isSubmitting ? t.aiAdvertising.form.creating : t.aiAdvertising.form.createCampaign}
                 </button>
                 <button
                   type="button"
@@ -2643,7 +2940,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   disabled={isSelectingAudience}
                   className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base flex-1 sm:flex-initial min-w-0"
                 >
-                  Отмена
+                  {t.aiAdvertising.form.cancel}
                 </button>
               </div>
             </form>
@@ -2656,7 +2953,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white">Редактировать кампанию</h3>
+              <h3 className="text-white">{t.aiAdvertising.form.editCampaign}</h3>
               <button
                 onClick={() => {
                   setShowEditModal(false);
@@ -2673,16 +2970,16 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
             <form onSubmit={editForm.handleSubmit(handleEditCampaign)} className="space-y-4">
               <div>
-                <label className="text-gray-400 mb-2 block">Название кампании <span className="text-red-400">*</span></label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.campaignName} <span className="text-red-400">*</span></label>
                 <input
                   type="text"
                   {...editForm.register('name', {
-                    required: 'Название кампании обязательно',
-                    minLength: { value: 3, message: 'Название кампании должно содержать минимум 3 символа' },
-                    maxLength: { value: 100, message: 'Название кампании не должно превышать 100 символов' },
-                    validate: (value) => value.trim().length >= 3 || 'Название кампании должно содержать минимум 3 символа',
+                    required: t.aiAdvertising.form.campaignNameRequired,
+                    minLength: { value: 3, message: t.aiAdvertising.validation.nameMinLength },
+                    maxLength: { value: 100, message: t.aiAdvertising.validation.nameMaxLength },
+                    validate: (value) => value.trim().length >= 3 || t.aiAdvertising.validation.nameMinLength,
                   })}
-                  placeholder="Например: Весенняя акция"
+                  placeholder={t.aiAdvertising.form.campaignNamePlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     editForm.formState.errors.name
                       ? 'border-red-500 focus:border-red-500'
@@ -2696,13 +2993,13 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-gray-400 block">Платформы <span className="text-red-400">*</span></label>
+                  <label className="text-gray-400 block">{t.aiAdvertising.form.platforms} <span className="text-red-400">*</span></label>
                   <button
                     type="button"
                     onClick={handleSelectAllEditPlatforms}
                     className="text-xs text-yellow-400 hover:text-yellow-300 px-3 py-1 rounded-lg hover:bg-yellow-400/10 transition-colors"
                   >
-                    {editForm.watch('platforms').length === availablePlatforms.length ? 'Снять все' : 'Выбрать все'}
+                    {editForm.watch('platforms').length === availablePlatforms.length ? t.aiAdvertising.platformActions.deselectAll : t.aiAdvertising.platformActions.selectAll}
                   </button>
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-900/30 border border-slate-700 rounded-xl p-2 sm:p-3">
@@ -2727,21 +3024,21 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </div>
 
               <div>
-                <label className="text-gray-400 mb-2 block">Номер телефона для связи <span className="text-red-400">*</span></label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.phone} <span className="text-red-400">*</span></label>
                 <input
                   type="tel"
                   {...editForm.register('phone', {
-                    required: 'Номер телефона обязателен',
+                    required: t.aiAdvertising.validation.phoneRequired,
                     pattern: {
                       value: /^[\d\s()+-]+$/,
-                      message: 'Неверный формат номера телефона',
+                      message: t.aiAdvertising.validation.phoneInvalidFormat,
                     },
                     validate: (value) => {
                       const digits = value.replace(/\D/g, '');
-                      return digits.length >= 10 || 'Номер телефона должен содержать минимум 10 цифр';
+                      return digits.length >= 10 || t.aiAdvertising.validation.phoneMinDigits;
                     },
                   })}
-                  placeholder="+7 (XXX) XXX-XX-XX"
+                  placeholder={t.aiAdvertising.form.phonePlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     editForm.formState.errors.phone
                       ? 'border-red-500 focus:border-red-500'
@@ -2751,17 +3048,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 {editForm.formState.errors.phone && (
                   <p className="text-red-400 text-xs mt-1">{editForm.formState.errors.phone.message}</p>
                 )}
-                <p className="text-gray-500 text-xs mt-1">Клиенты смогут связаться с вами по этому номеру</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.form.phoneDescription}</p>
               </div>
 
               <div>
-                <label className="text-gray-400 mb-2 block">Локация показа рекламы</label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.location}</label>
                 <input
                   type="text"
                   {...editForm.register('location', {
-                    maxLength: { value: 200, message: 'Локация не должна превышать 200 символов' },
+                    maxLength: { value: 200, message: t.aiAdvertising.validation.locationMaxLength },
                   })}
-                  placeholder="Например: Алматы, Астана, Казахстан или весь мир"
+                  placeholder={t.aiAdvertising.form.locationPlaceholder}
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     editForm.formState.errors.location
                       ? 'border-red-500 focus:border-red-500'
@@ -2779,14 +3076,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <input
                   type="number"
                   {...editForm.register('budget', {
-                    required: 'Бюджет обязателен',
+                    required: t.aiAdvertising.validation.budgetRequired,
                     validate: (value) => {
                       const num = parseFloat(value.replace(/[^\d.]/g, ''));
                       if (isNaN(num) || num <= 0) {
-                        return 'Бюджет должен быть положительным числом';
+                        return t.aiAdvertising.validation.budgetPositive;
                       }
                       if (num < 1000) {
-                        return 'Минимальный бюджет: ₸1,000';
+                        return t.aiAdvertising.validation.budgetMinValue;
                       }
                       return true;
                     },
@@ -2802,7 +3099,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 {editForm.formState.errors.budget && (
                   <p className="text-red-400 text-xs mt-1">{editForm.formState.errors.budget.message}</p>
                 )}
-                <p className="text-gray-500 text-xs mt-1">Минимальный бюджет: ₸1,000</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.validation.budgetMinValue}</p>
               </div>
 
               {/* Текст объявления */}
@@ -2832,7 +3129,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           showToast('Текст объявления обновлен с помощью AI', 'success');
                         }
                       } catch (error: any) {
-                        showToast('Не удалось обновить текст объявления', 'error');
+                        showToast(t.aiAdvertising.messages.updateAdTextError, 'error');
                       } finally {
                         setIsSelectingAudience(false);
                       }
@@ -2863,11 +3160,11 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
 
               {/* Краткое описание */}
               <div>
-                <label className="text-gray-400 mb-2 block">Краткое описание</label>
+                <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.description}</label>
                 <textarea
                   value={editingDescription}
                   onChange={(e) => setEditingDescription(e.target.value)}
-                  placeholder="Опишите, что вы хотите рекламировать, какие преимущества выделить, какой стиль объявления предпочитаете..."
+                  placeholder={t.aiAdvertising.form.descriptionPlaceholder}
                   rows={4}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                 />
@@ -2899,7 +3196,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                           showToast('Изображение успешно сгенерировано!', 'success');
                         }
                       } catch (error: any) {
-                        showToast('Не удалось сгенерировать изображение', 'error');
+                        showToast(t.aiAdvertising.toast.imageGenerationError, 'error');
                       } finally {
                         setIsRegeneratingImageInEdit(false);
                       }
@@ -2921,7 +3218,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   <div className="relative rounded-xl overflow-hidden border border-slate-700/30 bg-slate-900/30">
                     <SafeImage 
                       src={editingImageUrl}
-                      alt="Изображение объявления"
+                      alt={t.aiAdvertising.imageAlt.adImage}
                       className="w-full h-auto max-h-64 object-cover"
                       containerClassName="w-full min-h-48"
                     />
@@ -2940,7 +3237,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   <div className="border-2 border-dashed border-slate-700 rounded-xl p-8 text-center bg-slate-900/30">
                     <Eye className="w-12 h-12 text-gray-600 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm mb-2">Изображение не добавлено</p>
-                    <p className="text-gray-600 text-xs">Нажмите "Сгенерировать новое" для создания изображения</p>
+                    <p className="text-gray-600 text-xs">{t.aiAdvertising.messages.generateNewImageHint}</p>
                   </div>
                 )}
                 <p className="text-gray-500 text-xs mt-2">Изображение для рекламных объявлений</p>
@@ -2952,7 +3249,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   disabled={editForm.formState.isSubmitting}
                   className="flex-1 min-w-0 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
-                  {editForm.formState.isSubmitting ? 'Сохранение...' : 'Сохранить изменения'}
+                  {editForm.formState.isSubmitting ? t.aiAdvertising.saving.saving : t.aiAdvertising.saving.saveChanges}
                 </button>
                 <button
                   type="button"
@@ -2965,7 +3262,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   }}
                   className="px-4 sm:px-6 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-sm sm:text-base flex-1 sm:flex-initial min-w-0"
                 >
-                  Отмена
+                  {t.aiAdvertising.form.cancel}
                 </button>
               </div>
             </form>
@@ -2978,14 +3275,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         onConfirm={deleteCampaign}
-        title="Удалить кампанию?"
+        title={t.aiAdvertising.deleteConfirm.title}
         description={
           campaignToDelete !== null
-            ? `Вы уверены, что хотите удалить кампанию "${campaigns[campaignToDelete]?.name}"? Это действие нельзя отменить.`
-            : 'Вы уверены, что хотите удалить эту кампанию? Это действие нельзя отменить.'
+            ? t.aiAdvertising.deleteConfirm.message.replace('{name}', campaigns[campaignToDelete]?.name || '')
+            : t.aiAdvertising.deleteConfirm.messageGeneric
         }
-        confirmText="Удалить"
-        cancelText="Отмена"
+        confirmText={t.aiAdvertising.form.delete}
+        cancelText={t.aiAdvertising.form.cancel}
         variant="destructive"
         isLoading={isDeleting !== null}
       />

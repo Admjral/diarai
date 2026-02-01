@@ -1,8 +1,9 @@
 import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles } from 'lucide-react';
-import { Screen } from '../App';
+import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser } from '../lib/api';
 import { Toast } from './Toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminPanelProps {
   onNavigate: (screen: Screen) => void;
@@ -12,6 +13,7 @@ interface AdminPanelProps {
 type Tab = 'stats' | 'users' | 'campaigns' | 'wallets';
 
 export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<Tab>('stats');
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -43,6 +45,22 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   // Модальное окно для деталей кампании
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignWithUser | null>(null);
   const [showCampaignDetailsModal, setShowCampaignDetailsModal] = useState(false);
+  
+  // Модальное окно для загрузки статистики кампании
+  const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const [selectedCampaignForStats, setSelectedCampaignForStats] = useState<CampaignWithUser | null>(null);
+  const [statsForm, setStatsForm] = useState({
+    spent: '',
+    conversions: '',
+    budget: '',
+  });
+  const [statsLoading, setStatsLoading] = useState(false);
+  
+  // Модальное окно для выбора пользователя перед экспортом
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportType, setExportType] = useState<'leads' | 'clients' | 'campaigns' | null>(null);
+  const [exportUserId, setExportUserId] = useState<number | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   // Загрузка статистики
   const loadStats = useCallback(async () => {
@@ -51,7 +69,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       setStats(data);
     } catch (error: any) {
       console.error('Ошибка загрузки статистики:', error);
-      showToast('Ошибка загрузки статистики', 'error');
+      showToast(t.adminPanel.statsLoadError, 'error');
     }
   }, [showToast]);
 
@@ -62,7 +80,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       setUsers(data);
     } catch (error: any) {
       console.error('Ошибка загрузки пользователей:', error);
-      showToast('Ошибка загрузки пользователей', 'error');
+      showToast(t.adminPanel.usersLoadError, 'error');
     }
   }, [showToast]);
 
@@ -73,7 +91,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       setCampaigns(data);
     } catch (error: any) {
       console.error('Ошибка загрузки кампаний:', error);
-      showToast('Ошибка загрузки кампаний', 'error');
+      showToast(t.adminPanel.campaignsLoadError, 'error');
     }
   }, [showToast]);
 
@@ -84,7 +102,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       setWallets(data);
     } catch (error: any) {
       console.error('Ошибка загрузки кошельков:', error);
-      showToast('Ошибка загрузки кошельков', 'error');
+      showToast(t.adminPanel.walletsLoadError, 'error');
     }
   }, [showToast]);
 
@@ -115,52 +133,52 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const handleUpdatePlan = useCallback(async (userId: number, plan: 'Free' | 'Pro' | 'Business') => {
     try {
       await adminAPI.updateUserPlan(userId, plan);
-      showToast('План подписки обновлен', 'success');
+      showToast(t.adminPanel.planUpdated, 'success');
       await loadUsers();
     } catch (error: any) {
       console.error('Ошибка обновления плана:', error);
-      showToast('Ошибка обновления плана', 'error');
+      showToast(t.adminPanel.planUpdateError, 'error');
     }
-  }, [loadUsers, showToast]);
+  }, [loadUsers, showToast, t]);
 
   // Обновление роли пользователя
   const handleUpdateRole = useCallback(async (userId: number, role: 'user' | 'admin') => {
     try {
       await adminAPI.updateUserRole(userId, role);
-      showToast('Роль обновлена', 'success');
+      showToast(t.adminPanel.roleUpdated, 'success');
       await loadUsers();
     } catch (error: any) {
       console.error('Ошибка обновления роли:', error);
-      showToast('Ошибка обновления роли', 'error');
+      showToast(t.adminPanel.roleUpdateError, 'error');
     }
-  }, [loadUsers, showToast]);
+  }, [loadUsers, showToast, t]);
 
   // Переключение статуса кампании
   const handleToggleCampaign = useCallback(async (campaignId: number, currentStatus: string) => {
     try {
       // Определяем следующий статус в зависимости от текущего
-      let newStatus: 'Активна' | 'На паузе' | 'На проверке';
+      let newStatus: string;
       
-      if (currentStatus === 'Активна') {
-        newStatus = 'На паузе';
-      } else if (currentStatus === 'На паузе') {
-        newStatus = 'На проверке';
-      } else if (currentStatus === 'На проверке') {
-        newStatus = 'Активна';
+      if (currentStatus === t.adminPanel.status.active) {
+        newStatus = t.adminPanel.status.paused;
+      } else if (currentStatus === t.adminPanel.status.paused) {
+        newStatus = t.adminPanel.status.onReview;
+      } else if (currentStatus === t.adminPanel.status.onReview) {
+        newStatus = t.adminPanel.status.active;
       } else {
         // Если статус неизвестен, переключаем на "Активна"
-        newStatus = 'Активна';
+        newStatus = t.adminPanel.status.active;
       }
       
       await adminAPI.toggleCampaign(campaignId, newStatus);
       
       let message = '';
-      if (newStatus === 'Активна') {
-        message = 'Кампания активирована';
-      } else if (newStatus === 'На паузе') {
-        message = 'Кампания приостановлена';
-      } else if (newStatus === 'На проверке') {
-        message = 'Кампания отправлена на проверку';
+      if (newStatus === t.adminPanel.status.active) {
+        message = t.adminPanel.campaignActivated;
+      } else if (newStatus === t.adminPanel.status.paused) {
+        message = t.adminPanel.campaignPaused;
+      } else if (newStatus === t.adminPanel.status.onReview) {
+        message = t.adminPanel.campaignSentForReview;
       }
       
       showToast(message, 'success');
@@ -168,64 +186,77 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       await loadStats();
     } catch (error: any) {
       console.error('Ошибка изменения статуса кампании:', error);
-      showToast('Ошибка изменения статуса кампании', 'error');
+      showToast(t.adminPanel.campaignStatusError, 'error');
     }
-  }, [loadCampaigns, loadStats, showToast]);
+  }, [loadCampaigns, loadStats, showToast, t]);
 
-  // Экспорт данных
-  const handleExportLeads = useCallback(async () => {
+  // Открыть модальное окно для выбора пользователя перед экспортом
+  const openExportModal = useCallback((type: 'leads' | 'clients' | 'campaigns') => {
+    setExportType(type);
+    setExportUserId(null);
+    setExportModalOpen(true);
+  }, []);
+
+  // Выполнить экспорт с выбранным пользователем
+  const handleExport = useCallback(async () => {
+    if (!exportType) return;
+
+    setExportLoading(true);
     try {
-      const blob = await adminAPI.exportLeads();
+      let blob: Blob;
+      let filename: string;
+
+      if (exportType === 'leads') {
+        blob = await adminAPI.exportLeads(exportUserId || undefined);
+        filename = exportUserId ? `leads_user_${exportUserId}.csv` : 'leads_all.csv';
+      } else if (exportType === 'clients') {
+        blob = await adminAPI.exportClients(exportUserId || undefined);
+        filename = exportUserId ? `clients_user_${exportUserId}.csv` : 'clients_all.csv';
+      } else {
+        blob = await adminAPI.exportCampaignsStats(exportUserId || undefined);
+        filename = exportUserId ? `campaigns_stats_user_${exportUserId}.csv` : 'campaigns_stats_all.csv';
+      }
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'leads.csv';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      showToast('Лиды экспортированы', 'success');
-    } catch (error: any) {
-      console.error('Ошибка экспорта лидов:', error);
-      showToast('Ошибка экспорта лидов', 'error');
-    }
-  }, [showToast]);
 
-  const handleExportClients = useCallback(async () => {
-    try {
-      const blob = await adminAPI.exportClients();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'clients.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      showToast('Клиенты экспортированы', 'success');
+      const userText = exportUserId 
+        ? users.find(u => u.id === exportUserId)?.name || t.adminPanel.export.user
+        : t.adminPanel.export.allUsers;
+      
+      const typeText = exportType === 'leads' ? t.adminPanel.export.typeLeads : exportType === 'clients' ? t.adminPanel.export.typeClients : t.adminPanel.export.typeCampaignStats;
+      showToast(`${typeText} экспортированы (${userText})`, 'success');
+      
+      setExportModalOpen(false);
+      setExportType(null);
+      setExportUserId(null);
     } catch (error: any) {
-      console.error('Ошибка экспорта клиентов:', error);
-      showToast('Ошибка экспорта клиентов', 'error');
+      console.error('Ошибка экспорта:', error);
+      const typeText = exportType === 'leads' ? t.adminPanel.export.typeLeadsGenitive : exportType === 'clients' ? t.adminPanel.export.typeClientsGenitive : t.adminPanel.export.typeCampaignStatsGenitive;
+      showToast(`Ошибка экспорта ${typeText}`, 'error');
+    } finally {
+      setExportLoading(false);
     }
-  }, [showToast]);
+  }, [exportType, exportUserId, users, showToast]);
 
-  const handleExportCampaignsStats = useCallback(async () => {
-    try {
-      const blob = await adminAPI.exportCampaignsStats();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'campaigns_stats.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      showToast('Статистика кампаний экспортирована', 'success');
-    } catch (error: any) {
-      console.error('Ошибка экспорта статистики кампаний:', error);
-      showToast('Ошибка экспорта статистики кампаний', 'error');
-    }
-  }, [showToast]);
+  // Старые обработчики для обратной совместимости (теперь открывают модальное окно)
+  const handleExportLeads = useCallback(() => {
+    openExportModal('leads');
+  }, [openExportModal]);
+
+  const handleExportClients = useCallback(() => {
+    openExportModal('clients');
+  }, [openExportModal]);
+
+  const handleExportCampaignsStats = useCallback(() => {
+    openExportModal('campaigns');
+  }, [openExportModal]);
 
   // Операции с кошельком
   const openWalletModal = useCallback((wallet: WalletWithUser, action: 'add' | 'withdraw' | 'set') => {
@@ -269,7 +300,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       }
     } catch (error: any) {
       console.error('Ошибка импорта:', error);
-      showToast(error.message || 'Ошибка импорта', 'error');
+      showToast(error.message || t.adminPanel.errors.import, 'error');
     } finally {
       setImportLoading(false);
     }
@@ -280,7 +311,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     
     const amount = parseFloat(walletAmount);
     if (isNaN(amount) || amount <= 0) {
-      showToast('Введите корректную сумму', 'error');
+      showToast(t.adminPanel.invalidAmount, 'error');
       return;
     }
 
@@ -301,11 +332,50 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       await loadStats();
     } catch (error: any) {
       console.error('Ошибка операции с кошельком:', error);
-      showToast(error.message || 'Ошибка операции с кошельком', 'error');
+      showToast(error.message || t.adminPanel.errors.wallet, 'error');
     } finally {
       setWalletLoading(false);
     }
   }, [selectedWallet, walletAmount, walletNote, walletAction, loadWallets, loadStats, showToast]);
+
+  // Открыть модальное окно для загрузки статистики
+  const openStatsModal = useCallback((campaign: CampaignWithUser) => {
+    setSelectedCampaignForStats(campaign);
+    // Извлекаем числа из строк (убираем ₸ и форматирование)
+    const spent = campaign.spent.replace(/[₸,\s]/g, '');
+    const budget = campaign.budget.replace(/[₸,\s]/g, '');
+    setStatsForm({
+      spent: spent,
+      conversions: campaign.conversions.toString(),
+      budget: budget,
+    });
+    setStatsModalOpen(true);
+  }, []);
+
+  // Обновить статистику кампании
+  const handleUpdateStats = useCallback(async () => {
+    if (!selectedCampaignForStats) return;
+
+    setStatsLoading(true);
+    try {
+      await adminAPI.updateCampaignStats(selectedCampaignForStats.id, {
+        spent: statsForm.spent,
+        conversions: parseInt(statsForm.conversions) || 0,
+        budget: statsForm.budget,
+      });
+      
+      showToast(t.adminPanel.campaignStatsUpdated, 'success');
+      setStatsModalOpen(false);
+      setSelectedCampaignForStats(null);
+      await loadCampaigns();
+      await loadStats();
+    } catch (error: any) {
+      console.error('Ошибка обновления статистики:', error);
+      showToast(error.message || t.adminPanel.errors.updateStats, 'error');
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [selectedCampaignForStats, statsForm, loadCampaigns, loadStats, showToast]);
 
   // Фильтрация пользователей
   const filteredUsers = useMemo(() => {
@@ -391,10 +461,10 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {[
-              { id: 'stats' as Tab, label: 'Статистика', icon: BarChart3 },
-              { id: 'users' as Tab, label: 'Пользователи', icon: Users },
-              { id: 'campaigns' as Tab, label: 'Кампании', icon: Megaphone },
-              { id: 'wallets' as Tab, label: 'Кошельки', icon: Wallet },
+              { id: 'stats' as Tab, label: t.adminPanel.tabs.stats, icon: BarChart3 },
+              { id: 'users' as Tab, label: t.adminPanel.tabs.users, icon: Users },
+              { id: 'campaigns' as Tab, label: t.adminPanel.tabs.campaigns, icon: Megaphone },
+              { id: 'wallets' as Tab, label: t.adminPanel.tabs.wallets, icon: Wallet },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -448,9 +518,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-gray-400 text-sm">Лиды</p>
+                        <p className="text-gray-400 text-sm">{t.adminPanel.stats.leads}</p>
                         <p className="text-2xl font-bold text-white mt-1">{stats.totalLeads}</p>
-                        <p className="text-gray-400 text-sm mt-1">Сделок: {stats.totalDeals}</p>
+                        <p className="text-gray-400 text-sm mt-1">{t.adminPanel.stats.deals}: {stats.totalDeals}</p>
                       </div>
                       <BarChart3 className="w-8 h-8 text-green-400" />
                     </div>
@@ -468,36 +538,36 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                 </div>
 
                 <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">Экспорт и импорт данных</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">{t.adminPanel.exportImport.title}</h3>
                   <div className="space-y-4">
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-300 mb-2">Экспорт</h4>
+                      <h4 className="text-sm font-semibold text-gray-300 mb-2">{t.adminPanel.exportImport.export}</h4>
                       <div className="flex flex-wrap gap-4">
                         <button
                           onClick={handleExportLeads}
                           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Download className="w-4 h-4" />
-                          Экспорт лидов
+                          {t.adminPanel.export.leads}
                         </button>
                         <button
                           onClick={handleExportClients}
                           className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Download className="w-4 h-4" />
-                          Экспорт клиентов
+                          {t.adminPanel.export.clients}
                         </button>
                         <button
                           onClick={handleExportCampaignsStats}
                           className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Download className="w-4 h-4" />
-                          Экспорт статистики кампаний
+                          {t.adminPanel.export.campaignStats}
                         </button>
                       </div>
                     </div>
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-300 mb-2">Импорт</h4>
+                      <h4 className="text-sm font-semibold text-gray-300 mb-2">{t.adminPanel.exportImport.import}</h4>
                       <div className="flex flex-wrap gap-4">
                         <button
                           onClick={() => {
@@ -507,7 +577,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Upload className="w-4 h-4" />
-                          Импорт лидов
+                          {t.adminPanel.import.leads}
                         </button>
                         <button
                           onClick={() => {
@@ -517,7 +587,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Upload className="w-4 h-4" />
-                          Импорт клиентов
+                          {t.adminPanel.import.clients}
                         </button>
                         <button
                           onClick={() => {
@@ -527,7 +597,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg flex items-center gap-2 transition-colors"
                         >
                           <Upload className="w-4 h-4" />
-                          Импорт статистики кампаний
+                          {t.adminPanel.import.campaignStats}
                         </button>
                       </div>
                     </div>
@@ -544,7 +614,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Поиск по email или имени..."
+                      placeholder={t.adminPanel.search.userPlaceholder}
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400"
@@ -624,7 +694,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Поиск по названию кампании или email пользователя..."
+                      placeholder={t.adminPanel.search.campaignPlaceholder}
                       value={campaignSearch}
                       onChange={(e) => setCampaignSearch(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400"
@@ -635,7 +705,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap"
                   >
                     <Download className="w-4 h-4" />
-                    Экспорт статистики
+                    {t.adminPanel.export.campaignStats}
                   </button>
                 </div>
 
@@ -674,7 +744,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span className={`px-2 py-1 rounded text-xs ${
-                              campaign.status === 'Активна' 
+                              campaign.status === t.adminPanel.status.active 
                                 ? 'bg-green-400/20 text-green-400'
                                 : campaign.status === 'На проверке'
                                 ? 'bg-yellow-400/20 text-yellow-400'
@@ -685,26 +755,39 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm">{campaign.budget}</td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleCampaign(campaign.id, campaign.status);
-                              }}
-                              className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap ${
-                                campaign.status === 'Активна'
-                                  ? 'bg-red-600/20 text-red-400 hover:bg-red-600/30'
-                                  : campaign.status === 'На проверке'
-                                  ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                                  : 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                              }`}
-                            >
-                              <Power className="w-3 h-3 flex-shrink-0" />
-                              <span className="hidden sm:inline">{campaign.status === 'Активна' 
-                                ? 'Приостановить' 
-                                : campaign.status === 'На проверке'
-                                ? 'Активировать'
-                                : 'Активировать'}</span>
-                            </button>
+                            <div className="flex gap-1 sm:gap-2 flex-wrap">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openStatsModal(campaign);
+                                }}
+                                className="px-2 sm:px-3 py-1 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap"
+                                title={t.adminPanel.wallet.loadStats}
+                              >
+                                <BarChart3 className="w-3 h-3 flex-shrink-0" />
+                                <span className="hidden sm:inline">{t.adminPanel.tabs.stats}</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleCampaign(campaign.id, campaign.status);
+                                }}
+                                className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap ${
+                                  campaign.status === t.adminPanel.status.active
+                                    ? 'bg-red-600/20 text-red-400 hover:bg-red-600/30'
+                                    : campaign.status === t.adminPanel.status.onReview
+                                    ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                                    : 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                                }`}
+                              >
+                                <Power className="w-3 h-3 flex-shrink-0" />
+                                <span className="hidden sm:inline">{campaign.status === t.adminPanel.status.active 
+                                  ? t.adminPanel.wallet.pause 
+                                  : campaign.status === t.adminPanel.status.onReview
+                                  ? t.adminPanel.wallet.activate
+                                  : t.adminPanel.wallet.activate}</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -730,9 +813,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                       <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap min-w-0">
                         <h3 className="text-white text-lg sm:text-2xl font-bold break-words flex-1 min-w-0">{selectedCampaign.name}</h3>
                         <span className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
-                          selectedCampaign.status === 'Активна'
+                          selectedCampaign.status === t.adminPanel.status.active
                             ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                            : selectedCampaign.status === 'На проверке'
+                            : selectedCampaign.status === t.adminPanel.status.onReview
                             ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                             : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
                         }`}>
@@ -903,21 +986,21 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                                 className="px-2 sm:px-3 py-1 bg-green-600/20 text-green-400 hover:bg-green-600/30 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap"
                               >
                                 <Plus className="w-3 h-3 flex-shrink-0" />
-                                <span className="hidden sm:inline">Пополнить</span>
+                                <span className="hidden sm:inline">{t.adminPanel.wallet.topUpShort}</span>
                               </button>
                               <button
                                 onClick={() => openWalletModal(wallet, 'withdraw')}
                                 className="px-2 sm:px-3 py-1 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap"
                               >
                                 <Minus className="w-3 h-3 flex-shrink-0" />
-                                <span className="hidden sm:inline">Снять</span>
+                                <span className="hidden sm:inline">{t.adminPanel.wallet.withdrawShort}</span>
                               </button>
                               <button
                                 onClick={() => openWalletModal(wallet, 'set')}
                                 className="px-2 sm:px-3 py-1 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors whitespace-nowrap"
                               >
                                 <Edit2 className="w-3 h-3 flex-shrink-0" />
-                                <span className="hidden sm:inline">Установить</span>
+                                <span className="hidden sm:inline">{t.adminPanel.wallet.setShort}</span>
                               </button>
                             </div>
                           </td>
@@ -937,24 +1020,24 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full">
             <h3 className="text-lg font-semibold text-white mb-4">
-              {walletAction === 'add' && 'Пополнить кошелек'}
-              {walletAction === 'withdraw' && 'Снять средства'}
-              {walletAction === 'set' && 'Установить баланс'}
+              {walletAction === 'add' && t.adminPanel.wallet.topUp}
+              {walletAction === 'withdraw' && t.adminPanel.wallet.withdraw}
+              {walletAction === 'set' && t.adminPanel.wallet.setBalance}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Пользователь</label>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.wallet.user}</label>
                 <p className="text-white">
                   {selectedWallet.user ? `${selectedWallet.user.name} (${selectedWallet.user.email})` : `User ID: ${selectedWallet.userId}`}
                 </p>
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Текущий баланс</label>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.wallet.currentBalance}</label>
                 <p className="text-white font-semibold">{selectedWallet.balance} {selectedWallet.currency}</p>
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-2">
-                  {walletAction === 'set' ? 'Новый баланс' : 'Сумма'}
+                  {walletAction === 'set' ? t.adminPanel.wallet.newBalance : t.adminPanel.wallet.amount}
                 </label>
                 <input
                   type="number"
@@ -967,11 +1050,11 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Примечание (необязательно)</label>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.wallet.note}</label>
                 <textarea
                   value={walletNote}
                   onChange={(e) => setWalletNote(e.target.value)}
-                  placeholder="Примечание к операции..."
+                  placeholder={t.adminPanel.wallet.note}
                   rows={3}
                   className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none"
                 />
@@ -982,7 +1065,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
                   disabled={walletLoading}
                 >
-                  Отмена
+                  {t.dashboard.cancel}
                 </button>
                 <button
                   onClick={handleWalletAction}
@@ -992,10 +1075,10 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   {walletLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Обработка...
+                      {t.adminPanel.wallet.processing}
                     </>
                   ) : (
-                    'Подтвердить'
+                    t.adminPanel.wallet.confirm
                   )}
                 </button>
               </div>
@@ -1009,17 +1092,17 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full">
             <h3 className="text-lg font-semibold text-white mb-4">
-              Импорт {importType === 'leads' ? 'лидов' : importType === 'clients' ? 'клиентов' : 'статистики кампаний'}
+              {t.adminPanel.exportImport.import} {importType === 'leads' ? t.adminPanel.import.importTypeLeads : importType === 'clients' ? t.adminPanel.import.importTypeClients : t.adminPanel.import.importTypeCampaignStats}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Выберите пользователя</label>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.exportImport.selectUser}</label>
                 <select
                   value={selectedUserId || ''}
                   onChange={(e) => setSelectedUserId(parseInt(e.target.value) || null)}
                   className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
                 >
-                  <option value="">Выберите пользователя...</option>
+                  <option value="">{t.adminPanel.exportImport.selectUserPlaceholder}</option>
                   {users.map(user => (
                     <option key={user.id} value={user.id}>
                       {user.name} ({user.email})
@@ -1028,7 +1111,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Выберите CSV файл</label>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.exportImport.selectCsvFile}</label>
                 <input
                   type="file"
                   accept=".csv"
@@ -1047,7 +1130,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
                   disabled={importLoading}
                 >
-                  Отмена
+                  {t.dashboard.cancel}
                 </button>
                 <button
                   onClick={handleImport}
@@ -1057,10 +1140,142 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   {importLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Импорт...
+                      {t.adminPanel.exportImport.importing}
                     </>
                   ) : (
-                    'Импортировать'
+                    t.adminPanel.exportImport.importButton
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно для выбора пользователя перед экспортом */}
+      {exportModalOpen && exportType && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              {t.adminPanel.exportImport.export} {exportType === 'leads' ? t.adminPanel.export.typeLeadsGenitive : exportType === 'clients' ? t.adminPanel.export.typeClientsGenitive : t.adminPanel.export.typeCampaignStatsGenitive}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.exportImport.selectUser}</label>
+                <select
+                  value={exportUserId || ''}
+                  onChange={(e) => setExportUserId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                >
+                  <option value="">{t.adminPanel.exportImport.allUsers}</option>
+                  {users.map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.email})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {exportUserId ? t.adminPanel.export.exportForUser : t.adminPanel.export.exportForAll}
+                </p>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setExportModalOpen(false);
+                    setExportType(null);
+                    setExportUserId(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                  disabled={exportLoading}
+                >
+                  {t.dashboard.cancel}
+                </button>
+                <button
+                  onClick={handleExport}
+                  disabled={exportLoading}
+                  className="flex-1 px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-black rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {exportLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {t.adminPanel.exportImport.exporting}
+                    </>
+                  ) : (
+                    t.adminPanel.exportImport.exportButton
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно для загрузки статистики кампании */}
+      {statsModalOpen && selectedCampaignForStats && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Загрузить статистику: {selectedCampaignForStats.name}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Потрачено (₸)</label>
+                <input
+                  type="number"
+                  value={statsForm.spent}
+                  onChange={(e) => setStatsForm({ ...statsForm, spent: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Конверсии</label>
+                <input
+                  type="number"
+                  value={statsForm.conversions}
+                  onChange={(e) => setStatsForm({ ...statsForm, conversions: e.target.value })}
+                  placeholder="0"
+                  min="0"
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Бюджет (₸)</label>
+                <input
+                  type="number"
+                  value={statsForm.budget}
+                  onChange={(e) => setStatsForm({ ...statsForm, budget: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setStatsModalOpen(false);
+                    setSelectedCampaignForStats(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                  disabled={statsLoading}
+                >
+                  {t.dashboard.cancel}
+                </button>
+                <button
+                  onClick={handleUpdateStats}
+                  disabled={statsLoading}
+                  className="flex-1 px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-black rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {statsLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Обновление...
+                    </>
+                  ) : (
+                    'Обновить статистику'
                   )}
                 </button>
               </div>

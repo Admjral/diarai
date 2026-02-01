@@ -45,4 +45,11 @@ server/dist/
 server/.env
 server/*.log
 
+# Messenger Service
+messenger-service/node_modules/
+messenger-service/dist/
+messenger-service/.env
+messenger-service/*.log
+
+.vercel
 

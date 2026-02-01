@@ -5,12 +5,12 @@ import { z, ZodError } from 'zod';
 export function validateBody(schema: z.ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Логируем входящие данные для отладки (только в development)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Валидация данных:', JSON.stringify(req.body, null, 2));
-      }
-      
-      req.body = schema.parse(req.body);
+      // Безопасное логирование - не выводим пароли и токены
+      const { password, token, secret, ...safeBody } = req.body;
+      console.log('[validation] Проверка полей:', Object.keys(req.body).join(', '));
+
+      const parsedBody = schema.parse(req.body);
+      req.body = parsedBody;
       next();
     } catch (error) {
       if (error instanceof ZodError) {
@@ -19,11 +19,10 @@ export function validateBody(schema: z.ZodSchema) {
           message: err.message,
           code: err.code,
         }));
-        
-        // Логируем ошибки валидации
-        console.error('Ошибки валидации:', errors);
-        console.error('Полученные данные:', JSON.stringify(req.body, null, 2));
-        
+
+        // Логируем только поля с ошибками, без значений
+        console.error('[validation] Ошибки:', errors.map(e => `${e.path}: ${e.message}`).join(', '));
+
         return res.status(400).json({
           error: 'Ошибка валидации',
           details: errors,

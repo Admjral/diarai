@@ -1,0 +1,84 @@
+services:
+  # WAHA - WhatsApp HTTP API
+  # Бесплатная версия (community)
+  waha:
+    image: devlikeapro/waha:latest
+    platform: linux/amd64  # Эмуляция через Rosetta на Apple Silicon
+    container_name: diarai-waha
+    ports:
+      - "3001:3000"
+    environment:
+      # Webhook для входящих сообщений
+      - WHATSAPP_HOOK_URL=http://messenger-service:3000/webhook/whatsapp
+      - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status
+      # API ключ (опционально)
+      - WHATSAPP_API_KEY=${WAHA_API_KEY:-}
+      # Автозапуск сессий
+      - WHATSAPP_RESTART_ALL_SESSIONS=true
+    volumes:
+      - waha_data:/app/.waha
+      - waha_sessions:/app/.sessions
+    restart: unless-stopped
+    networks:
+      - messenger-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis для PubSub и кэширования
+  redis:
+    image: redis:7-alpine
+    container_name: diarai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - messenger-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Messenger Service
+  messenger-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: diarai-messenger-service
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WAHA_URL=http://waha:3000
+      - REDIS_URL=redis://redis:6379
+      - DIAR_BACKEND_URL=${DIAR_BACKEND_URL}
+      - DIAR_API_KEY=${DIAR_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - INSTAGRAM_ACCESS_TOKEN=${INSTAGRAM_ACCESS_TOKEN}
+      - INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
+      - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      waha:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - messenger-network
+
+volumes:
+  waha_data:
+  waha_sessions:
+  redis_data:
+
+networks:
+  messenger-network:
+    driver: bridge

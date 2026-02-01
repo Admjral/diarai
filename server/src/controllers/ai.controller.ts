@@ -1,13 +1,15 @@
 import { Request, Response } from 'express';
-import { 
-  generateAdText, 
-  generateRecommendations, 
+import {
+  generateAdText,
+  generateRecommendations,
   analyzeCampaignCategory,
   generateAdImage,
   generateAudienceInterests,
   isOpenAIAvailable,
   getOpenAIStatus
 } from '../services/openai.service';
+import { getStorageService } from '../services/storage.service';
+import { log } from '../utils/logger';
 
 interface AIAudienceRequest {
   campaignName: string;
@@ -244,22 +246,49 @@ export async function getAIAudience(req: Request, res: Response) {
 }
 
 /**
- * GET /api/ai/status - Проверка статуса OpenAI API
+ * GET /api/ai/status - Проверка статуса Gemini API
  */
 export async function getAIStatus(req: Request, res: Response) {
   try {
     const status = getOpenAIStatus();
     res.json({
       ...status,
-      message: status.available 
-        ? 'OpenAI API настроен и готов к использованию' 
+      provider: 'gemini',
+      message: status.available
+        ? 'Gemini API настроен и готов к использованию'
         : status.configured
-        ? 'OpenAI API ключ настроен, но недоступен'
-        : 'OpenAI API ключ не настроен. Используется fallback режим.',
+        ? 'Gemini API ключ настроен, но недоступен'
+        : 'Gemini API ключ не настроен. Используется fallback режим.',
     });
   } catch (error) {
-    console.error('Ошибка при проверке статуса OpenAI:', error);
+    console.error('Ошибка при проверке статуса Gemini:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
+  }
+}
+
+/**
+ * Сохраняет изображение из URL в локальное хранилище
+ */
+async function saveImageToStorage(imageUrl: string, fileName: string = 'dalle-image'): Promise<string | null> {
+  try {
+    const storageService = getStorageService();
+
+    // Скачиваем и сохраняем изображение в локальное хранилище
+    const result = await storageService.uploadFromUrl(imageUrl, 'ai-generated');
+
+    // Получаем публичный URL
+    const publicUrl = storageService.getPublicUrl(result.url);
+
+    log.info('AI generated image saved to local storage', {
+      originalUrl: imageUrl.substring(0, 50) + '...',
+      localUrl: publicUrl,
+      size: result.size,
+    });
+
+    return publicUrl;
+  } catch (error: any) {
+    log.error('Error saving AI image to local storage', error);
+    return imageUrl; // Возвращаем оригинальный URL при ошибке
   }
 }
 
@@ -276,6 +305,7 @@ export async function generateAdImageHandler(req: Request, res: Response) {
       });
     }
     
+    // Генерируем изображение через DALL-E
     const imageUrl = await generateAdImage(campaignName, category || 'general', description);
     
     if (!imageUrl) {
@@ -284,7 +314,10 @@ export async function generateAdImageHandler(req: Request, res: Response) {
       });
     }
     
-    res.json({ imageUrl });
+    // Сохраняем изображение в Supabase Storage, чтобы избежать истечения URL
+    const permanentUrl = await saveImageToStorage(imageUrl, `campaign-${campaignName.replace(/\s+/g, '-').toLowerCase()}`);
+    
+    res.json({ imageUrl: permanentUrl || imageUrl });
   } catch (error) {
     console.error('Ошибка при генерации изображения:', error);
     res.status(500).json({ error: 'Ошибка сервера при генерации изображения' });

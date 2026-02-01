@@ -37,6 +37,12 @@ export const createLeadSchema = z.object({
     .max(1000, 'Заметки не должны превышать 1000 символов')
     .optional()
     .nullable(),
+  campaignId: z
+    .number()
+    .int()
+    .positive('ID кампании должен быть положительным числом')
+    .optional()
+    .nullable(),
 });
 
 // Схема валидации для обновления лида
@@ -83,7 +89,7 @@ export const createDealSchema = z.object({
     .max(100, 'Вероятность не может превышать 100%')
     .optional()
     .default(0),
-  expectedCloseDate: z.string().datetime().optional().nullable(),
+  expectedCloseDate: z.union([z.string().datetime(), z.null()]).optional(),
   notes: z
     .string()
     .max(1000, 'Заметки не должны превышать 1000 символов')
@@ -114,7 +120,7 @@ export const createTaskSchema = z.object({
     .enum(['low', 'medium', 'high', 'urgent'])
     .optional()
     .default('medium'),
-  dueDate: z.string().datetime().optional().nullable(),
+  dueDate: z.union([z.string().datetime(), z.null()]).optional(),
   clientId: z.number().int().positive().optional().nullable(),
   dealId: z.number().int().positive().optional().nullable(),
   assignedTo: z.string().max(200).optional().nullable(),
@@ -216,7 +222,11 @@ export const addFundsSchema = z.object({
         return num;
       }),
     ]),
-});
+  paymentMethod: z.string().optional().refine(
+    (val) => !val || val === 'direct' || val === 'kaspi',
+    { message: 'paymentMethod должен быть "direct" или "kaspi"' }
+  ),
+}).passthrough(); // Разрешаем дополнительные поля - важно для сохранения paymentMethod
 
 // Схема валидации для снятия средств
 export const withdrawFundsSchema = z.object({

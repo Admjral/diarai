@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
 import { getUserIdByEmail } from '../utils/userHelper';
+import { createNotification } from '../services/notification.service';
+import { NotificationType } from '@prisma/client';
 
 export class TasksController {
   // Получить все задачи пользователя
@@ -90,6 +92,25 @@ export class TasksController {
         },
       });
 
+      // Проверяем, не просрочена ли задача при создании
+      if (task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done') {
+        try {
+          await createNotification({
+            userId,
+            type: NotificationType.task_overdue,
+            title: 'Просроченная задача',
+            message: `Задача "${task.title}" уже просрочена. Срок выполнения: ${new Date(task.dueDate).toLocaleDateString('ru-RU')}`,
+            data: {
+              taskId: task.id,
+              taskTitle: task.title,
+              dueDate: task.dueDate.toISOString(),
+            },
+          });
+        } catch (error: any) {
+          console.error('[tasks.controller] Ошибка отправки уведомления о просроченной задаче:', error);
+        }
+      }
+
       res.status(201).json(task);
     } catch (error: any) {
       console.error('Ошибка при создании задачи:', error);
@@ -144,6 +165,39 @@ export class TasksController {
         where: { id: parseInt(id, 10) },
         data: updateData,
       });
+
+      // Проверяем, не просрочена ли задача после обновления
+      if (updatedTask.dueDate && new Date(updatedTask.dueDate) < new Date() && updatedTask.status !== 'done') {
+        // Проверяем, не было ли уже уведомления для этой задачи
+        const hasNotification = await prisma.notification.findFirst({
+          where: {
+            userId,
+            type: NotificationType.task_overdue,
+            data: {
+              path: ['taskId'],
+              equals: updatedTask.id,
+            },
+          },
+        });
+
+        if (!hasNotification) {
+          try {
+            await createNotification({
+              userId,
+              type: NotificationType.task_overdue,
+              title: 'Просроченная задача',
+              message: `Задача "${updatedTask.title}" просрочена. Срок выполнения: ${new Date(updatedTask.dueDate).toLocaleDateString('ru-RU')}`,
+              data: {
+                taskId: updatedTask.id,
+                taskTitle: updatedTask.title,
+                dueDate: updatedTask.dueDate.toISOString(),
+              },
+            });
+          } catch (error: any) {
+            console.error('[tasks.controller] Ошибка отправки уведомления о просроченной задаче:', error);
+          }
+        }
+      }
 
       res.json(updatedTask);
     } catch (error: any) {

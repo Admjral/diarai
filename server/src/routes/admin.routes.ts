@@ -17,6 +17,12 @@ import {
   adminAddFunds,
   adminWithdrawFunds,
   adminSetBalance,
+  updateCampaignStats,
+  bulkUpdateCampaignsStats,
+  adminEditCampaign,
+  approveCampaign,
+  rejectCampaign,
+  getCampaignHistory,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -33,6 +39,12 @@ router.put('/users/:userId/role', updateUserRole);
 // Кампании
 router.get('/campaigns', getAllCampaigns);
 router.put('/campaigns/:campaignId/toggle', toggleCampaign);
+router.put('/campaigns/:campaignId/stats', updateCampaignStats);
+router.put('/campaigns/stats/bulk', bulkUpdateCampaignsStats);
+router.put('/campaigns/:campaignId/edit', adminEditCampaign);
+router.post('/campaigns/:campaignId/approve', approveCampaign);
+router.post('/campaigns/:campaignId/reject', rejectCampaign);
+router.get('/campaigns/:campaignId/history', getCampaignHistory);
 
 // Кошельки
 router.get('/wallets', getAllWallets);

@@ -1,131 +1,95 @@
+// Импорты React должны быть первыми
 import { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
+// Типы импортируем до компонентов
+import type { Screen, ToastType } from './types';
+// API
+import { userAPI, APIError } from './lib/api';
+// Контексты и хуки
+import { useAuth } from './contexts/AuthContext';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { useServerConnection } from './hooks/useServerConnection';
+// Компоненты импортируем последними
 import { Onboarding } from './components/Onboarding';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { Toast } from './components/Toast';
 import { ServerErrorFallback } from './components/ServerErrorFallback';
-import { useAuth } from './contexts/AuthContext';
-import { useServerConnection } from './hooks/useServerConnection';
-import { userAPI, APIError } from './lib/api';
-import { supabase } from './lib/supabase';
+import { LoadingSpinner } from './components/LoadingSpinner';
 
 // Lazy loading для тяжелых компонентов
-const CRM = lazy(() => 
-  import('./components/CRM').then(module => ({ default: module.CRM }))
-);
-const AIAdvertising = lazy(() => 
-  import('./components/AIAdvertising').then(module => ({ default: module.AIAdvertising }))
-);
-const Integrations = lazy(() => 
-  import('./components/Integrations').then(module => ({ default: module.Integrations }))
-);
-const Subscription = lazy(() => 
-  import('./components/Subscription').then(module => ({ default: module.Subscription }))
-);
-const Support = lazy(() => 
-  import('./components/Support').then(module => ({ default: module.Support }))
-);
-const AdminPanel = lazy(() => 
-  import('./components/AdminPanel').then(module => ({ default: module.AdminPanel }))
-);
+const CRM = lazy(() => import('./components/CRM').then(m => ({ default: m.CRM })));
+const AIAdvertising = lazy(() => import('./components/AIAdvertising').then(m => ({ default: m.AIAdvertising })));
+const Integrations = lazy(() => import('./components/Integrations').then(m => ({ default: m.Integrations })));
+const Subscription = lazy(() => import('./components/Subscription').then(m => ({ default: m.Subscription })));
+const Support = lazy(() => import('./components/Support').then(m => ({ default: m.Support })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const Notifications = lazy(() => import('./components/Notifications').then(m => ({ default: m.Notifications })));
+const MessengerInbox = lazy(() => import('./components/MessengerInbox').then(m => ({ default: m.MessengerInbox })));
 
-export type Screen = 'onboarding' | 'login' | 'dashboard' | 'crm' | 'ai-advertising' | 'integrations' | 'subscription' | 'support' | 'admin';
-
-export type ToastType = {
-  message: string;
-  type: 'success' | 'error' | 'info';
-} | null;
-
-export default function App() {
-  const { user: supabaseUser, loading } = useAuth();
+function AppContent() {
+  const { user: authUser, loading } = useAuth();
   const { isConnected, isChecking, error: connectionError, checkConnection } = useServerConnection();
+  const { t } = useLanguage();
   const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
   const [user, setUser] = useState<{ name: string; plan: 'Free' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
-  useEffect(() => {
-    if (!loading) {
-      if (supabaseUser) {
-        // Сохраняем email и userId в localStorage для API запросов
-        const userEmail = supabaseUser.email;
-        const userId = supabaseUser.id;
-        
-        if (userEmail) {
-          localStorage.setItem('userEmail', userEmail);
-          sessionStorage.setItem('userEmail', userEmail);
-        }
-        if (userId) {
-          localStorage.setItem('userId', userId);
-          sessionStorage.setItem('userId', userId);
-        }
-        
-        // Загружаем профиль пользователя из БД
-        const loadUserProfile = async () => {
-          try {
-            if (userEmail) {
-              // Ждем, пока сессия Supabase будет полностью загружена
-              // Проверяем сессию вместо фиксированной задержки
-              let attempts = 0;
-              const maxAttempts = 10;
-              while (attempts < maxAttempts) {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.access_token) {
-                  break;
-                }
-                await new Promise(resolve => setTimeout(resolve, 50));
-                attempts++;
-              }
-              
-              const profile = await userAPI.getProfile();
-              setUser({
-                name: profile.name,
-                plan: profile.plan,
-                role: profile.role,
-              });
-            } else {
-              // Fallback если email отсутствует
-              setUser({
-                name: 'Пользователь',
-                plan: 'Free',
-              });
-            }
-          } catch (error) {
-            console.error('Ошибка при загрузке профиля пользователя:', error);
-            // Если это ошибка подключения, не показываем fallback здесь (он покажется глобально)
-            if (error instanceof APIError && error.isNetworkError) {
-              // Просто используем fallback значения
-            }
-            // Fallback на дефолтные значения при ошибке
-            setUser({
-              name: supabaseUser.email?.split('@')[0] || 'Пользователь',
-              plan: 'Free',
-            });
-          }
-        };
-        
-        loadUserProfile();
-        setCurrentScreen('dashboard');
-      } else {
-        // Очищаем сохраненные данные при выходе
-        localStorage.removeItem('userEmail');
-        localStorage.removeItem('userId');
-        sessionStorage.removeItem('userEmail');
-        sessionStorage.removeItem('userId');
-        setCurrentScreen('onboarding');
-      }
-    }
-  }, [supabaseUser, loading]);
-
+  // Определяем showToast ДО useEffect, где он используется
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      if (authUser) {
+        // Пользователь авторизован через наш AuthContext
+        // Загружаем профиль пользователя из БД
+        const loadUserProfile = async () => {
+          setIsLoadingProfile(true);
+          try {
+            const profile = await userAPI.getProfile();
+            setUser({
+              name: profile.name,
+              plan: profile.plan,
+              role: profile.role,
+            });
+            // Показываем приветственное сообщение после успешной загрузки профиля
+            const userName = profile.name || authUser.email?.split('@')[0] || t.dashboard.user;
+            showToast(t.dashboard.welcomeUser.replace('{name}', userName), 'success');
+          } catch (error) {
+            console.error('Ошибка при загрузке профиля пользователя:', error);
+            // Fallback на дефолтные значения при ошибке
+            const fallbackName = authUser.name || authUser.email?.split('@')[0] || t.dashboard.user;
+            setUser({
+              name: fallbackName,
+              plan: (authUser.plan as 'Free' | 'Pro' | 'Business') || 'Free',
+              role: authUser.role as 'user' | 'admin',
+            });
+            // Показываем сообщение даже при ошибке
+            if (!(error instanceof APIError && error.isNetworkError)) {
+              showToast(t.dashboard.welcomeUser.replace('{name}', fallbackName), 'info');
+            }
+          } finally {
+            setIsLoadingProfile(false);
+          }
+        };
+
+        setCurrentScreen('dashboard');
+        loadUserProfile();
+      } else {
+        // Пользователь не авторизован
+        setUser(null);
+        setIsLoadingProfile(false);
+        setCurrentScreen('onboarding');
+      }
+    }
+  }, [authUser, loading, showToast, t]);
+
   const handleLogin = useCallback(async (name: string) => {
-    // После логина через Supabase, профиль загрузится автоматически через useEffect
-    // Здесь просто переключаем экран
+    // После логина профиль загрузится автоматически через useEffect
     setCurrentScreen('dashboard');
-    showToast(`Добро пожаловать, ${name}!`, 'success');
-  }, [showToast]);
+  }, []);
 
   const handleNavigate = useCallback((screen: Screen) => {
     setCurrentScreen(screen);
@@ -147,12 +111,7 @@ export default function App() {
 
   const renderScreen = useMemo(() => {
     const LoadingFallback = () => (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Загрузка...</p>
-        </div>
-      </div>
+      <LoadingSpinner size="lg" variant="branded" />
     );
 
     switch (currentScreen) {
@@ -203,27 +162,37 @@ export default function App() {
             <AdminPanel onNavigate={handleNavigate} showToast={showToast} />
           </Suspense>
         );
+      case 'notifications':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <Notifications onNavigate={handleNavigate} showToast={showToast} />
+          </Suspense>
+        );
+      case 'inbox':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <MessengerInbox showToast={showToast} onNavigate={handleNavigate} />
+          </Suspense>
+        );
       default:
         return <Dashboard user={user} onNavigate={handleNavigate} showToast={showToast} />;
     }
-  }, [currentScreen, user, handleNavigate, showToast, handleLogin, handleOnboardingComplete, handlePlanUpdate]);
+  }, [currentScreen, user, handleNavigate, showToast, handleLogin, handleOnboardingComplete, handlePlanUpdate, t]);
 
   // Показываем Fallback UI если сервер недоступен (кроме экранов логина и онбординга)
-  const shouldShowFallback = !isConnected && 
-    !isChecking && 
-    currentScreen !== 'onboarding' && 
+  const shouldShowFallback = !isConnected &&
+    !isChecking &&
+    currentScreen !== 'onboarding' &&
     currentScreen !== 'login' &&
     !loading;
 
   if (loading || isChecking) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Загрузка...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner size="xl" variant="branded" />;
+  }
+
+  // Показываем экран загрузки профиля во время загрузки профиля пользователя
+  if (isLoadingProfile && authUser) {
+    return <LoadingSpinner size="xl" variant="branded" text={t.dashboard.loadingProfile} />;
   }
 
   if (shouldShowFallback) {
@@ -247,5 +216,13 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { Plan, Role } from '@prisma/client';
+import { Plan, Role, CampaignAction } from '@prisma/client';
 import Papa from 'papaparse';
 
 // Проверка, является ли пользователь админом
@@ -248,14 +248,31 @@ export async function getAdminStats(req: Request, res: Response) {
   }
 }
 
-// Экспорт всех лидов в CSV
+// Экспорт лидов в CSV (по пользователю или всех)
 export async function exportLeads(req: Request, res: Response) {
   try {
     if (!(await isAdmin(req))) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
+    const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
+
+    // Если userId указан, проверяем существование пользователя
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+      }
+    }
+
+    const whereClause = userId ? { userId } : {};
+
     const leads = await prisma.lead.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -265,8 +282,10 @@ export async function exportLeads(req: Request, res: Response) {
       `${lead.id},"${lead.name}","${lead.phone}","${lead.email}","${lead.source}","${lead.status}","${lead.createdAt.toISOString()}"`
     ).join('\n');
 
+    const filename = userId ? `leads_user_${userId}.csv` : 'leads_all.csv';
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=leads.csv');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     res.send('\ufeff' + csvHeader + csvRows); // BOM для Excel
   } catch (error) {
     console.error('Ошибка при экспорте лидов:', error);
@@ -274,14 +293,32 @@ export async function exportLeads(req: Request, res: Response) {
   }
 }
 
-// Экспорт всех клиентов в CSV
+// Экспорт клиентов в CSV (по пользователю или всех)
 export async function exportClients(req: Request, res: Response) {
   try {
     if (!(await isAdmin(req))) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
+    const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
+
+    // Если userId указан, проверяем существование пользователя
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+      }
+    }
+
+    // Для таблицы clients используем userid_old для фильтрации
+    const whereClause = userId ? { userid_old: userId } : {};
+
     const clients = await prisma.clients.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -290,8 +327,10 @@ export async function exportClients(req: Request, res: Response) {
       `${client.id},"${client.name}","${client.phone}","${client.email}","${client.stage}","${client.status}","${client.createdAt.toISOString()}"`
     ).join('\n');
 
+    const filename = userId ? `clients_user_${userId}.csv` : 'clients_all.csv';
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=clients.csv');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     res.send('\ufeff' + csvHeader + csvRows);
   } catch (error) {
     console.error('Ошибка при экспорте клиентов:', error);
@@ -299,14 +338,31 @@ export async function exportClients(req: Request, res: Response) {
   }
 }
 
-// Экспорт статистики кампаний в CSV
+// Экспорт статистики кампаний в CSV (по пользователю или всех)
 export async function exportCampaignsStats(req: Request, res: Response) {
   try {
     if (!(await isAdmin(req))) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
+    const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
+
+    // Если userId указан, проверяем существование пользователя
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+      }
+    }
+
+    const whereClause = userId ? { userId } : {};
+
     const campaigns = await prisma.campaign.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -334,8 +390,10 @@ export async function exportCampaignsStats(req: Request, res: Response) {
       return `${campaign.id},"${campaign.name}","${campaign.userName}","${campaign.userEmail}","${platforms}","${campaign.status}",${budget},${spent},${campaign.conversions},"${campaign.createdAt.toISOString()}","${campaign.updatedAt.toISOString()}"`;
     }).join('\n');
 
+    const filename = userId ? `campaigns_stats_user_${userId}.csv` : 'campaigns_stats_all.csv';
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=campaigns_stats.csv');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     res.send('\ufeff' + csvHeader + csvRows);
   } catch (error) {
     console.error('Ошибка при экспорте статистики кампаний:', error);
@@ -807,6 +865,460 @@ export async function importCampaignsStats(req: Request, res: Response) {
   } catch (error) {
     console.error('Ошибка при импорте статистики кампаний:', error);
     res.status(500).json({ error: 'Ошибка при импорте статистики кампаний' });
+  }
+}
+
+// Обновить статистику кампании (админ)
+export async function updateCampaignStats(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const { campaignId } = req.params;
+    const { spent, conversions, budget } = req.body;
+
+    // Проверяем существование кампании
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Кампания не найдена' });
+    }
+
+    // Формируем данные для обновления
+    const updateData: any = {};
+    
+    if (spent !== undefined) {
+      const spentNum = typeof spent === 'string' 
+        ? parseFloat(spent.replace(/[₸,\s]/g, '')) 
+        : spent;
+      if (!isNaN(spentNum) && spentNum >= 0) {
+        updateData.spent = spentNum;
+      }
+    }
+
+    if (conversions !== undefined) {
+      const conversionsNum = parseInt(conversions);
+      if (!isNaN(conversionsNum) && conversionsNum >= 0) {
+        updateData.conversions = conversionsNum;
+      }
+    }
+
+    if (budget !== undefined) {
+      const budgetNum = typeof budget === 'string' 
+        ? parseFloat(budget.replace(/[₸,\s]/g, '')) 
+        : budget;
+      if (!isNaN(budgetNum) && budgetNum > 0) {
+        updateData.budget = budgetNum;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'Необходимо указать хотя бы одно поле для обновления' });
+    }
+
+    // Обновляем кампанию
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: parseInt(campaignId) },
+      data: updateData,
+    });
+
+    // Получаем информацию о пользователе
+    const user = await prisma.user.findUnique({
+      where: { id: updatedCampaign.userId },
+      select: { email: true, name: true },
+    });
+
+    res.json({
+      ...updatedCampaign,
+      budget: `₸${Number(updatedCampaign.budget).toLocaleString()}`,
+      spent: `₸${Number(updatedCampaign.spent).toLocaleString()}`,
+      conversions: updatedCampaign.conversions,
+      user: user || null,
+      message: 'Статистика кампании обновлена',
+    });
+  } catch (error) {
+    console.error('Ошибка при обновлении статистики кампании:', error);
+    res.status(500).json({ error: 'Ошибка при обновлении статистики кампании' });
+  }
+}
+
+// Массовое обновление статистики кампаний
+export async function bulkUpdateCampaignsStats(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const { updates } = req.body; // Массив { campaignId, spent?, conversions?, budget? }
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: 'Необходимо предоставить массив обновлений' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (const update of updates) {
+      try {
+        const { campaignId, spent, conversions, budget } = update;
+
+        if (!campaignId) {
+          errors.push({ campaignId, error: 'ID кампании обязателен' });
+          continue;
+        }
+
+        const updateData: any = {};
+
+        if (spent !== undefined) {
+          const spentNum = typeof spent === 'string' 
+            ? parseFloat(spent.replace(/[₸,\s]/g, '')) 
+            : spent;
+          if (!isNaN(spentNum) && spentNum >= 0) {
+            updateData.spent = spentNum;
+          }
+        }
+
+        if (conversions !== undefined) {
+          const conversionsNum = parseInt(conversions);
+          if (!isNaN(conversionsNum) && conversionsNum >= 0) {
+            updateData.conversions = conversionsNum;
+          }
+        }
+
+        if (budget !== undefined) {
+          const budgetNum = typeof budget === 'string' 
+            ? parseFloat(budget.replace(/[₸,\s]/g, '')) 
+            : budget;
+          if (!isNaN(budgetNum) && budgetNum > 0) {
+            updateData.budget = budgetNum;
+          }
+        }
+
+        if (Object.keys(updateData).length === 0) {
+          errors.push({ campaignId, error: 'Нет данных для обновления' });
+          continue;
+        }
+
+        const updated = await prisma.campaign.update({
+          where: { id: parseInt(campaignId) },
+          data: updateData,
+        });
+
+        results.push({
+          campaignId: updated.id,
+          spent: Number(updated.spent),
+          conversions: updated.conversions,
+          budget: Number(updated.budget),
+        });
+      } catch (error: any) {
+        errors.push({ campaignId: update.campaignId, error: error.message });
+      }
+    }
+
+    res.json({
+      message: `Обновлено ${results.length} кампаний`,
+      updated: results.length,
+      errors: errors.length,
+      errorDetails: errors,
+    });
+  } catch (error) {
+    console.error('Ошибка при массовом обновлении статистики:', error);
+    res.status(500).json({ error: 'Ошибка при массовом обновлении статистики' });
+  }
+}
+
+// =====================
+// CAMPAIGN MANAGEMENT (Admin Edit, Approve, Reject, History)
+// =====================
+
+// Редактировать кампанию (админ)
+export async function adminEditCampaign(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const adminEmail = req.user?.email;
+    const admin = await prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true },
+    });
+
+    if (!admin) {
+      return res.status(401).json({ error: 'Админ не найден' });
+    }
+
+    const { campaignId } = req.params;
+    const { name, adText, audience, budget, platform } = req.body;
+
+    // Получаем текущую кампанию
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Кампания не найдена' });
+    }
+
+    // Собираем изменения для истории
+    const changes: { fieldName: string; oldValue: any; newValue: any }[] = [];
+    const updateData: any = {};
+
+    if (name && name !== campaign.name) {
+      changes.push({ fieldName: 'name', oldValue: campaign.name, newValue: name });
+      updateData.name = name;
+    }
+
+    if (platform && platform !== campaign.platform) {
+      changes.push({ fieldName: 'platform', oldValue: campaign.platform, newValue: platform });
+      updateData.platform = platform;
+    }
+
+    if (budget !== undefined) {
+      const budgetNum = typeof budget === 'string'
+        ? parseFloat(budget.replace(/[₸,\s]/g, ''))
+        : budget;
+      if (!isNaN(budgetNum) && budgetNum !== Number(campaign.budget)) {
+        changes.push({ fieldName: 'budget', oldValue: Number(campaign.budget), newValue: budgetNum });
+        updateData.budget = budgetNum;
+      }
+    }
+
+    if (audience !== undefined) {
+      const currentAudience = campaign.audience as any;
+      // Обновляем adText внутри audience если передан
+      if (adText) {
+        const newAudience = { ...(currentAudience || {}), adText };
+        changes.push({ fieldName: 'audience.adText', oldValue: currentAudience?.adText, newValue: adText });
+        updateData.audience = newAudience;
+      } else {
+        changes.push({ fieldName: 'audience', oldValue: currentAudience, newValue: audience });
+        updateData.audience = audience;
+      }
+    } else if (adText) {
+      // Обновляем только adText в существующем audience
+      const currentAudience = (campaign.audience as any) || {};
+      const newAudience = { ...currentAudience, adText };
+      changes.push({ fieldName: 'audience.adText', oldValue: currentAudience?.adText, newValue: adText });
+      updateData.audience = newAudience;
+    }
+
+    if (changes.length === 0) {
+      return res.status(400).json({ error: 'Нет изменений для сохранения' });
+    }
+
+    // Выполняем транзакцию: обновление кампании + запись в историю
+    await prisma.$transaction([
+      ...changes.map(change =>
+        prisma.campaignHistory.create({
+          data: {
+            campaignId: parseInt(campaignId),
+            adminId: admin.id,
+            action: 'updated' as CampaignAction,
+            fieldName: change.fieldName,
+            oldValue: change.oldValue,
+            newValue: change.newValue,
+          },
+        })
+      ),
+      prisma.campaign.update({
+        where: { id: parseInt(campaignId) },
+        data: updateData,
+      }),
+    ]);
+
+    // Получаем обновленную кампанию
+    const updatedCampaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    res.json({
+      success: true,
+      campaign: updatedCampaign,
+      changes: changes.length,
+      message: `Кампания обновлена (${changes.length} изменений)`,
+    });
+  } catch (error) {
+    console.error('Ошибка при редактировании кампании:', error);
+    res.status(500).json({ error: 'Ошибка при редактировании кампании' });
+  }
+}
+
+// Одобрить кампанию (админ)
+export async function approveCampaign(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const adminEmail = req.user?.email;
+    const admin = await prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true },
+    });
+
+    if (!admin) {
+      return res.status(401).json({ error: 'Админ не найден' });
+    }
+
+    const { campaignId } = req.params;
+
+    // Проверяем существование кампании
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Кампания не найдена' });
+    }
+
+    // Выполняем транзакцию
+    await prisma.$transaction([
+      prisma.campaignHistory.create({
+        data: {
+          campaignId: parseInt(campaignId),
+          adminId: admin.id,
+          action: 'approved' as CampaignAction,
+        },
+      }),
+      prisma.campaign.update({
+        where: { id: parseInt(campaignId) },
+        data: {
+          status: 'Активна',
+          rejectionReason: null,
+        },
+      }),
+    ]);
+
+    // Создаем уведомление для владельца кампании
+    await prisma.notification.create({
+      data: {
+        userId: campaign.userId,
+        type: 'campaign_completed',
+        title: 'Кампания одобрена',
+        message: `Ваша кампания "${campaign.name}" была одобрена и активирована`,
+        data: { campaignId: campaign.id },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Кампания одобрена и активирована',
+    });
+  } catch (error) {
+    console.error('Ошибка при одобрении кампании:', error);
+    res.status(500).json({ error: 'Ошибка при одобрении кампании' });
+  }
+}
+
+// Отклонить кампанию (админ)
+export async function rejectCampaign(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const adminEmail = req.user?.email;
+    const admin = await prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true },
+    });
+
+    if (!admin) {
+      return res.status(401).json({ error: 'Админ не найден' });
+    }
+
+    const { campaignId } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ error: 'Укажите причину отклонения' });
+    }
+
+    // Проверяем существование кампании
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Кампания не найдена' });
+    }
+
+    // Выполняем транзакцию
+    await prisma.$transaction([
+      prisma.campaignHistory.create({
+        data: {
+          campaignId: parseInt(campaignId),
+          adminId: admin.id,
+          action: 'rejected' as CampaignAction,
+          comment: reason,
+        },
+      }),
+      prisma.campaign.update({
+        where: { id: parseInt(campaignId) },
+        data: {
+          status: 'Отклонена',
+          rejectionReason: reason,
+        },
+      }),
+    ]);
+
+    // Создаем уведомление для владельца кампании
+    await prisma.notification.create({
+      data: {
+        userId: campaign.userId,
+        type: 'campaign_completed',
+        title: 'Кампания отклонена',
+        message: `Ваша кампания "${campaign.name}" была отклонена. Причина: ${reason}`,
+        data: { campaignId: campaign.id, reason },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Кампания отклонена',
+    });
+  } catch (error) {
+    console.error('Ошибка при отклонении кампании:', error);
+    res.status(500).json({ error: 'Ошибка при отклонении кампании' });
+  }
+}
+
+// Получить историю изменений кампании (админ)
+export async function getCampaignHistory(req: Request, res: Response) {
+  try {
+    if (!(await isAdmin(req))) {
+      return res.status(403).json({ error: 'Доступ запрещен' });
+    }
+
+    const { campaignId } = req.params;
+
+    // Проверяем существование кампании
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: parseInt(campaignId) },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Кампания не найдена' });
+    }
+
+    const history = await prisma.campaignHistory.findMany({
+      where: { campaignId: parseInt(campaignId) },
+      include: {
+        admin: {
+          select: { id: true, email: true, name: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(history);
+  } catch (error) {
+    console.error('Ошибка при получении истории кампании:', error);
+    res.status(500).json({ error: 'Ошибка при получении истории кампании' });
   }
 }
 

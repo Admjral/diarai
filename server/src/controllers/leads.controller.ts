@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
 import { getUserIdByEmail } from '../utils/userHelper';
+import { createNotification } from '../services/notification.service';
+import { NotificationType } from '@prisma/client';
 
 export class LeadsController {
   // Получить все лиды пользователя
@@ -8,72 +10,45 @@ export class LeadsController {
     try {
       const userEmail = req.user?.email;
       
-      console.log('=== Запрос на получение лидов ===');
-      console.log('Headers:', JSON.stringify(req.headers, null, 2));
-      console.log('User from middleware:', req.user);
-      console.log('UserEmail:', userEmail);
+      // Безопасное логирование без чувствительных данных
+      console.log('[leads] Запрос на получение лидов от:', userEmail);
       
       if (!userEmail) {
         console.error('Email пользователя не предоставлен');
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      console.log('Получение лидов для пользователя:', userEmail);
-
       // Получаем userId из базы данных по email
       let userId: number;
       try {
-        console.log('Вызов getUserIdByEmail с email:', userEmail);
         userId = await getUserIdByEmail(userEmail);
-        console.log('✅ UserId получен:', userId);
       } catch (error: any) {
-        console.error('❌ Ошибка при получении userId:', error);
-        console.error('Тип ошибки:', error.constructor.name);
-        console.error('Код ошибки:', error.code);
-        console.error('Сообщение:', error.message);
-        if (error.stack) {
-          console.error('Stack trace:', error.stack);
-        }
-        return res.status(500).json({ 
+        console.error('[leads] Ошибка получения userId:', error.message);
+        return res.status(500).json({
           error: 'Ошибка при получении данных пользователя',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
       }
 
-      let leads;
-      try {
-        console.log('Запрос к базе данных для userId:', userId);
-        leads = await prisma.lead.findMany({
-          where: { userId },
-          orderBy: { createdAt: 'desc' },
-        });
-        console.log('✅ Найдено лидов:', leads.length);
-      } catch (dbError: any) {
-        console.error('❌ Ошибка при запросе к базе данных:', dbError);
-        console.error('Тип ошибки:', dbError.constructor.name);
-        console.error('Код ошибки Prisma:', dbError.code);
-        console.error('Сообщение:', dbError.message);
-        if (dbError.meta) {
-          console.error('Meta:', JSON.stringify(dbError.meta, null, 2));
-        }
-        if (dbError.stack) {
-          console.error('Stack trace:', dbError.stack);
-        }
-        throw dbError;
-      }
+      const leads = await prisma.lead.findMany({
+        where: { userId },
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
-      console.log('✅ Успешно возвращаем лиды');
+      console.log('[leads] Найдено лидов:', leads.length);
       res.json(leads);
     } catch (error: any) {
-      console.error('❌ Критическая ошибка при получении лидов:', error);
-      console.error('Тип ошибки:', error.constructor.name);
-      console.error('Детали ошибки:', {
-        message: error.message,
-        code: error.code,
-        name: error.name,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      });
-      res.status(500).json({ 
+      console.error('[leads] Ошибка получения лидов:', error.message);
+      res.status(500).json({
         error: 'Ошибка сервера',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
@@ -97,6 +72,15 @@ export class LeadsController {
           id: parseInt(id, 10),
           userId 
         },
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
+        },
       });
 
       if (!lead) {
@@ -114,7 +98,7 @@ export class LeadsController {
   static async createLead(req: Request, res: Response) {
     try {
       const userEmail = req.user?.email;
-      const { name, phone, email, status, source, stage, lastAction, notes } = req.body;
+      const { name, phone, email, status, source, stage, lastAction, notes, campaignId } = req.body;
 
       if (!userEmail) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
@@ -132,6 +116,19 @@ export class LeadsController {
 
       const userId = await getUserIdByEmail(userEmail);
 
+      // Проверяем, что кампания принадлежит пользователю, если campaignId указан
+      if (campaignId) {
+        const campaign = await prisma.campaign.findFirst({
+          where: {
+            id: campaignId,
+            userId,
+          },
+        });
+        if (!campaign) {
+          return res.status(404).json({ error: 'Кампания не найдена или не принадлежит пользователю' });
+        }
+      }
+
       const lead = await prisma.lead.create({
         data: {
           name,
@@ -140,9 +137,39 @@ export class LeadsController {
           status: status || 'new',
           source: source || 'Другое',
           notes: notes || null,
+          campaignId: campaignId || null,
           userId,
         },
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
+        },
       });
+
+      // Отправляем уведомление о новом лиде
+      try {
+        await createNotification({
+          userId,
+          type: NotificationType.new_lead,
+          title: 'Новый лид',
+          message: `Получен новый лид: ${name} (${phone})`,
+          data: {
+            leadId: lead.id,
+            leadName: name,
+            leadPhone: phone,
+            leadEmail: email,
+            source: source || 'Другое',
+          },
+        });
+      } catch (error: any) {
+        console.error('[leads.controller] Ошибка отправки уведомления о новом лиде:', error);
+        // Не блокируем создание лида из-за ошибки уведомления
+      }
 
       res.status(201).json(lead);
     } catch (error: any) {
@@ -169,7 +196,7 @@ export class LeadsController {
     try {
       const { id } = req.params;
       const userEmail = req.user?.email;
-      const { name, phone, email, status, source, stage, lastAction, notes } = req.body;
+      const { name, phone, email, status, source, stage, lastAction, notes, campaignId } = req.body;
 
       if (!userEmail) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
@@ -202,6 +229,21 @@ export class LeadsController {
         return res.status(404).json({ error: 'Лид не найден' });
       }
 
+      // Проверяем, что кампания принадлежит пользователю, если campaignId указан
+      if (campaignId !== undefined) {
+        if (campaignId !== null) {
+          const campaign = await prisma.campaign.findFirst({
+            where: {
+              id: campaignId,
+              userId,
+            },
+          });
+          if (!campaign) {
+            return res.status(404).json({ error: 'Кампания не найдена или не принадлежит пользователю' });
+          }
+        }
+      }
+
       const updatedLead = await prisma.lead.update({
         where: { id: leadId },
         data: {
@@ -213,6 +255,16 @@ export class LeadsController {
           ...(stage !== undefined && { stage }),
           ...(lastAction !== undefined && { lastAction: lastAction ? new Date(lastAction) : null }),
           ...(notes !== undefined && { notes }),
+          ...(campaignId !== undefined && { campaignId: campaignId || null }),
+        },
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
         },
       });
 

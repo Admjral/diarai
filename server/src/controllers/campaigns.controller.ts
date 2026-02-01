@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
 import { getUserIdByEmail } from '../utils/userHelper';
+import { getStorageService } from '../services/storage.service';
+import { log } from '../utils/logger';
 
 export class CampaignsController {
   // Получить все кампании
@@ -413,6 +415,75 @@ export class CampaignsController {
         message: error?.message,
         details: errorDetails,
       });
+    }
+  }
+
+  // Загрузка изображения для кампании (локальное хранилище)
+  static async uploadImage(req: Request, res: Response) {
+    try {
+      const { image, fileName } = req.body;
+
+      if (!image) {
+        return res.status(400).json({ error: 'Изображение не предоставлено' });
+      }
+
+      const storageService = getStorageService();
+
+      // Определяем расширение файла
+      const fileExt = fileName?.split('.').pop() || 'jpg';
+      const originalName = `campaign-image.${fileExt}`;
+
+      // Загружаем в локальное хранилище
+      const result = await storageService.uploadBase64(image, originalName, 'campaigns');
+
+      // Получаем полный публичный URL
+      const publicUrl = storageService.getPublicUrl(result.url);
+
+      log.info('Campaign image uploaded', {
+        filename: result.filename,
+        size: result.size,
+        url: result.url,
+      });
+
+      res.json({ imageUrl: publicUrl });
+    } catch (error: any) {
+      log.error('Error uploading campaign image', error);
+      // В случае ошибки возвращаем base64 как fallback
+      res.json({ imageUrl: req.body.image });
+    }
+  }
+
+  // Загрузка изображения через multipart form
+  static async uploadImageFile(req: Request, res: Response) {
+    try {
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: 'Файл не предоставлен' });
+      }
+
+      const storageService = getStorageService();
+
+      // Загружаем в локальное хранилище
+      const result = await storageService.uploadBuffer(
+        file.buffer,
+        file.originalname,
+        'campaigns'
+      );
+
+      // Получаем полный публичный URL
+      const publicUrl = storageService.getPublicUrl(result.url);
+
+      log.info('Campaign image file uploaded', {
+        originalName: file.originalname,
+        filename: result.filename,
+        size: result.size,
+      });
+
+      res.json({ imageUrl: publicUrl });
+    } catch (error: any) {
+      log.error('Error uploading campaign image file', error);
+      res.status(500).json({ error: 'Ошибка загрузки изображения' });
     }
   }
 }

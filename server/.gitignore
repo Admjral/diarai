@@ -10,11 +10,12 @@ dist/
 build/
 
 # Prisma
-prisma/migrations/
+# prisma/migrations/ — миграции нужны для деплоя
 
 # Logs
 *.log
 npm-debug.log*
+logs/
 
 # OS
 .DS_Store
@@ -27,3 +28,5 @@ Thumbs.db
 *.swo
 
 
+.vercel
+.env*.local

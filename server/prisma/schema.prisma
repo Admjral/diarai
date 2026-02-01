@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -8,29 +9,35 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String
-  password  String
-  plan      Plan     @default(Free)
-  role      Role     @default(user)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    Int       @id @default(autoincrement())
+  email                 String    @unique
+  name                  String
+  password              String
+  plan                  Plan      @default(Free)
+  role                  Role      @default(user)
+  subscriptionExpiresAt DateTime?
+  subscriptionAutoRenew Boolean   @default(true)
+  campaignEdits         CampaignHistory[] @relation("CampaignHistoryAdmin")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@map("users")
 }
 
 model Lead {
-  id        Int        @id @default(autoincrement())
-  userId    Int
-  name      String
-  phone     String
-  email     String
-  source    String     @default("Другое")
-  status    LeadStatus @default(new)
-  notes     String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id            Int        @id @default(autoincrement())
+  userId        Int
+  name          String
+  phone         String
+  email         String
+  source        String     @default("Другое")
+  status        LeadStatus @default(new)
+  notes         String?
+  campaignId    Int?
+  campaign      Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  conversations MessengerConversation[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@map("leads")
 }
@@ -83,20 +90,50 @@ model Message {
 }
 
 model Campaign {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  name        String
-  platform    String
-  status      String   @default("Активна")
-  budget      Decimal  @db.Decimal(10, 2)
-  spent       Decimal  @default(0) @db.Decimal(10, 2)
-  conversions Int      @default(0)
-  imageUrl    String?
-  audience    Json?    // Сохраняем данные аудитории (interests, ageRange, adText, recommendations и т.д.)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  name            String
+  platform        String
+  status          String   @default("Активна")
+  budget          Decimal  @db.Decimal(10, 2)
+  spent           Decimal  @default(0) @db.Decimal(10, 2)
+  conversions     Int      @default(0)
+  imageUrl        String?
+  audience        Json?    // Сохраняем данные аудитории (interests, ageRange, adText, recommendations и т.д.)
+  rejectionReason String?  // Причина отклонения админом
+  leads           Lead[]   // Связь с лидами
+  history         CampaignHistory[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@map("campaigns")
+}
+
+model CampaignHistory {
+  id          Int            @id @default(autoincrement())
+  campaignId  Int
+  campaign    Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adminId     Int
+  admin       User           @relation("CampaignHistoryAdmin", fields: [adminId], references: [id])
+  action      CampaignAction
+  fieldName   String?        // Какое поле изменено
+  oldValue    Json?          // Старое значение
+  newValue    Json?          // Новое значение
+  comment     String?        // Комментарий админа
+  createdAt   DateTime       @default(now())
+
+  @@index([campaignId])
+  @@index([adminId])
+  @@map("campaign_history")
+}
+
+enum CampaignAction {
+  created
+  updated
+  approved
+  rejected
+  paused
+  activated
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -223,4 +260,240 @@ enum SupportTicketPriority {
   medium
   high
   urgent
+}
+
+model Payment {
+  id                Int           @id @default(autoincrement())
+  userId            Int
+  plan              Plan
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("₸")
+  status            PaymentStatus @default(pending)
+  paymentMethod     String        @default("kaspi")
+  kaspiOrderId      String?
+  kaspiPaymentId    String?
+  walletTransactionId Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  paidAt            DateTime?
+
+  @@index([userId])
+  @@index([kaspiOrderId])
+  @@index([status])
+  @@map("payments")
+}
+
+model WalletTransaction {
+  id            Int             @id @default(autoincrement())
+  userId        Int
+  walletId      Int
+  type          TransactionType
+  amount        Decimal         @db.Decimal(10, 2)
+  balanceBefore Decimal         @db.Decimal(10, 2)
+  balanceAfter  Decimal         @db.Decimal(10, 2)
+  description   String?
+  paymentId     Int?
+  createdAt     DateTime        @default(now())
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([paymentId])
+  @@map("wallet_transactions")
+}
+
+enum PaymentStatus {
+  pending
+  processing
+  completed
+  failed
+  cancelled
+  refunded
+}
+
+enum TransactionType {
+  deposit
+  withdrawal
+  subscription
+  refund
+}
+
+model Notification {
+  id        Int                @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?              // Дополнительные данные (например, ID лида, сделки и т.д.)
+  read      Boolean            @default(false)
+  emailSent Boolean            @default(false)
+  pushSent  Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  readAt    DateTime?
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  subscription_expiring
+  subscription_expired
+  subscription_renewed
+  wallet_low_balance
+  wallet_deposit
+  new_lead
+  deal_closed
+  task_overdue
+  campaign_completed
+  payment_success
+  payment_failed
+  support_response
+  system_announcement
+  messenger_new_message
+  messenger_escalation
+}
+
+// ==========================================
+// MESSENGER INTEGRATION MODELS
+// ==========================================
+
+model MessengerConfig {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  type               MessengerType
+  credentials        Json     @default("{}") // Зашифрованные credentials
+  webhookSecret      String?  // Для верификации webhooks
+
+  // AI Settings
+  aiEnabled          Boolean  @default(true)
+  aiSystemPrompt     String?  @db.Text
+  aiModel            String   @default("gpt-4o-mini")
+  aiTemperature      Float    @default(0.7)
+
+  // Escalation Settings
+  escalationEnabled  Boolean  @default(true)
+  escalationKeywords String[] @default([])
+
+  // Connection Status
+  isConnected        Boolean  @default(false)
+  lastSyncAt         DateTime?
+  sessionId          String?  // Для WhatsApp WAHA session
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("messenger_configs")
+}
+
+model MessengerConversation {
+  id              String   @id @default(cuid())
+  userId          Int
+
+  // Идентификация контакта
+  messengerId     String   // Телефон (WA), chat_id (TG), PSID (IG)
+  messengerType   MessengerType
+  contactName     String
+  contactPhone    String?
+  contactAvatar   String?
+
+  // Последнее сообщение (для списка)
+  lastMessage     String?
+  lastMessageAt   DateTime?
+  unreadCount     Int      @default(0)
+
+  // Статус разговора
+  status          ConversationStatus @default(active)
+
+  // Назначение оператору
+  assignedToId    Int?
+
+  // Связь с лидом CRM
+  leadId          Int?
+  lead            Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  // AI метрики
+  aiResponseCount Int      @default(0)
+  escalatedCount  Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages        MessengerMessage[]
+
+  @@unique([userId, messengerId, messengerType])
+  @@index([userId])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@index([assignedToId])
+  @@index([leadId])
+  @@map("messenger_conversations")
+}
+
+model MessengerMessage {
+  id              String   @id @default(cuid())
+  conversationId  String
+  conversation    MessengerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Контент
+  text            String   @db.Text
+  mediaUrls       String[] @default([])
+
+  // Отправитель
+  sender          MessageSenderType
+  senderName      String?
+
+  // AI метаданные
+  isAIGenerated   Boolean  @default(false)
+  aiConfidence    Float?
+  aiIntent        String?
+
+  // Статус доставки
+  status          MessageDeliveryStatus @default(received)
+  deliveredAt     DateTime?
+  readAt          DateTime?
+
+  // Эскалация
+  isEscalated     Boolean  @default(false)
+  escalatedAt     DateTime?
+  escalationNote  String?
+
+  // Внешний ID (из мессенджера)
+  externalId      String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@index([isEscalated])
+  @@map("messenger_messages")
+}
+
+enum MessengerType {
+  whatsapp
+  telegram
+  instagram
+}
+
+enum ConversationStatus {
+  active
+  archived
+  closed
+}
+
+enum MessageSenderType {
+  customer
+  operator
+  ai
+}
+
+enum MessageDeliveryStatus {
+  received
+  pending
+  sent
+  delivered
+  read
+  failed
 }

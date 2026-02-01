@@ -1,14 +1,14 @@
 # Backend Dockerfile for Railway deployment
-# Build version: 2026-01-31-v3-fixed-paths
+# Build version: 2026-02-01-v4-local-paths
 FROM node:20-slim AS builder
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Копируем файлы зависимостей из server директории
-COPY server/package*.json ./
-COPY server/prisma ./prisma/
+# Копируем файлы зависимостей (пути локальные для server/ директории)
+COPY package*.json ./
+COPY prisma ./prisma/
 
 # Устанавливаем все зависимости (включая devDependencies для сборки)
 RUN npm install
@@ -17,7 +17,7 @@ RUN npm install
 RUN npx prisma generate
 
 # Копируем исходный код
-COPY server/ .
+COPY . .
 
 # Собираем TypeScript
 RUN npm run build
@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Копируем файлы зависимостей
-COPY server/package*.json ./
-COPY server/prisma ./prisma/
+COPY package*.json ./
+COPY prisma ./prisma/
 
 # Устанавливаем только production зависимости
 RUN npm install --omit=dev
@@ -43,7 +43,7 @@ RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 
 # Копируем start скрипт (миграции + запуск)
-COPY server/start.sh ./start.sh
+COPY start.sh ./start.sh
 RUN chmod +x ./start.sh
 
 # Создаем директорию для uploads
