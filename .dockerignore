@@ -5,7 +5,10 @@ build
 .env
 .env.*
 !.env.example
-server/
+# server/ - needed for backend build, don't ignore
 messenger-service/
 *.md
 .vscode
+# Ignore server node_modules and build artifacts
+server/node_modules
+server/dist
