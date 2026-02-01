@@ -1138,3 +1138,59 @@ export const messengerAPI = {
     request<{ lead: any | null }>(`/api/messenger/inbox/${conversationId}/lead`),
 };
 
+// =====================
+// PAYMENT REQUEST API (Kaspi manual payment)
+// =====================
+
+export interface PaymentRequest {
+  id: number;
+  userId: number;
+  plan: 'Pro' | 'Business';
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  note?: string;
+  adminNote?: string;
+  createdAt: string;
+  updatedAt: string;
+  processedAt?: string;
+  processedBy?: number;
+  user?: {
+    id: number;
+    email: string;
+    name: string;
+  };
+}
+
+export const paymentRequestAPI = {
+  // Клиентские методы
+  create: (plan: 'Pro' | 'Business', note?: string) =>
+    request<PaymentRequest>('/api/payment-requests', {
+      method: 'POST',
+      body: JSON.stringify({ plan, note }),
+    }),
+
+  getMy: () =>
+    request<PaymentRequest[]>('/api/payment-requests/my'),
+
+  // Админские методы
+  getPending: async (): Promise<PaymentRequest[]> => {
+    const result = await request<{ requests: PaymentRequest[]; pendingCount: number }>('/api/payment-requests/admin');
+    return result.requests;
+  },
+
+  getPendingCount: () =>
+    request<{ count: number }>('/api/payment-requests/admin/count'),
+
+  approve: (id: number, adminNote?: string) =>
+    request<{ success: boolean; message: string }>(`/api/payment-requests/admin/${id}/approve`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminNote }),
+    }),
+
+  reject: (id: number, adminNote?: string) =>
+    request<{ success: boolean; message: string }>(`/api/payment-requests/admin/${id}/reject`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminNote }),
+    }),
+};
+

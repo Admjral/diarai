@@ -1,7 +1,7 @@
-import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser } from '../lib/api';
+import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser, paymentRequestAPI, PaymentRequest } from '../lib/api';
 import { Toast } from './Toast';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -10,7 +10,7 @@ interface AdminPanelProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-type Tab = 'stats' | 'users' | 'campaigns' | 'wallets';
+type Tab = 'stats' | 'users' | 'campaigns' | 'wallets' | 'payment-requests';
 
 export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const { t } = useLanguage();
@@ -21,6 +21,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignWithUser[]>([]);
   const [wallets, setWallets] = useState<WalletWithUser[]>([]);
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [paymentRequestLoading, setPaymentRequestLoading] = useState<number | null>(null);
   
   // Фильтры и поиск
   const [userSearch, setUserSearch] = useState('');
@@ -106,6 +109,33 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     }
   }, [showToast]);
 
+  // Загрузка запросов на оплату
+  const loadPaymentRequests = useCallback(async () => {
+    try {
+      const data = await paymentRequestAPI.getPending();
+      setPaymentRequests(data);
+      setPendingCount(data.length);
+    } catch (error: any) {
+      console.error('Ошибка загрузки запросов на оплату:', error);
+      showToast('Ошибка загрузки запросов на оплату', 'error');
+    }
+  }, [showToast]);
+
+  // Загрузка pending count для badge
+  const loadPendingCount = useCallback(async () => {
+    try {
+      const result = await paymentRequestAPI.getPendingCount();
+      setPendingCount(result.count);
+    } catch (error: any) {
+      console.error('Ошибка загрузки количества запросов:', error);
+    }
+  }, []);
+
+  // Загрузка pending count при монтировании
+  useEffect(() => {
+    loadPendingCount();
+  }, [loadPendingCount]);
+
   // Загрузка данных при смене вкладки
   useEffect(() => {
     setLoading(true);
@@ -123,11 +153,14 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
         case 'wallets':
           await loadWallets();
           break;
+        case 'payment-requests':
+          await loadPaymentRequests();
+          break;
       }
       setLoading(false);
     };
     loadData();
-  }, [activeTab, loadStats, loadUsers, loadCampaigns, loadWallets]);
+  }, [activeTab, loadStats, loadUsers, loadCampaigns, loadWallets, loadPaymentRequests]);
 
   // Обновление плана пользователя
   const handleUpdatePlan = useCallback(async (userId: number, plan: 'Free' | 'Pro' | 'Business') => {
@@ -338,6 +371,39 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     }
   }, [selectedWallet, walletAmount, walletNote, walletAction, loadWallets, loadStats, showToast]);
 
+  // Одобрить запрос на оплату
+  const handleApprovePaymentRequest = useCallback(async (id: number) => {
+    setPaymentRequestLoading(id);
+    try {
+      await paymentRequestAPI.approve(id);
+      showToast('Подписка активирована', 'success');
+      await loadPaymentRequests();
+      await loadPendingCount();
+    } catch (error: any) {
+      console.error('Ошибка одобрения запроса:', error);
+      showToast(error.message || 'Ошибка одобрения запроса', 'error');
+    } finally {
+      setPaymentRequestLoading(null);
+    }
+  }, [loadPaymentRequests, loadPendingCount, showToast]);
+
+  // Отклонить запрос на оплату
+  const handleRejectPaymentRequest = useCallback(async (id: number) => {
+    const note = prompt('Причина отклонения (необязательно):');
+    setPaymentRequestLoading(id);
+    try {
+      await paymentRequestAPI.reject(id, note || undefined);
+      showToast('Запрос отклонён', 'info');
+      await loadPaymentRequests();
+      await loadPendingCount();
+    } catch (error: any) {
+      console.error('Ошибка отклонения запроса:', error);
+      showToast(error.message || 'Ошибка отклонения запроса', 'error');
+    } finally {
+      setPaymentRequestLoading(null);
+    }
+  }, [loadPaymentRequests, loadPendingCount, showToast]);
+
   // Открыть модальное окно для загрузки статистики
   const openStatsModal = useCallback((campaign: CampaignWithUser) => {
     setSelectedCampaignForStats(campaign);
@@ -465,6 +531,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
               { id: 'users' as Tab, label: t.adminPanel.tabs.users, icon: Users },
               { id: 'campaigns' as Tab, label: t.adminPanel.tabs.campaigns, icon: Megaphone },
               { id: 'wallets' as Tab, label: t.adminPanel.tabs.wallets, icon: Wallet },
+              { id: 'payment-requests' as Tab, label: 'Запросы на оплату', icon: CreditCard, badge: pendingCount },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -477,6 +544,11 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
               >
                 <tab.icon className="w-4 h-4 flex-shrink-0" />
                 <span>{tab.label}</span>
+                {'badge' in tab && tab.badge > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -1009,6 +1081,90 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* Запросы на оплату */}
+            {activeTab === 'payment-requests' && (
+              <div className="space-y-4">
+                {paymentRequests.length === 0 ? (
+                  <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-8 text-center">
+                    <CreditCard className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-white mb-2">Нет ожидающих запросов</h3>
+                    <p className="text-gray-400">Все запросы на активацию подписок обработаны.</p>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-x-auto">
+                    <table className="w-full min-w-[700px]">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Пользователь</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">План</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Сумма</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Дата</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paymentRequests.map(request => (
+                          <tr key={request.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
+                            <td className="px-4 py-3 text-white text-sm">
+                              <div>
+                                <p className="font-medium">{request.user?.name || 'N/A'}</p>
+                                <p className="text-gray-400 text-xs">{request.user?.email || `ID: ${request.userId}`}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                request.plan === 'Pro'
+                                  ? 'bg-blue-500/20 text-blue-400'
+                                  : 'bg-yellow-500/20 text-yellow-400'
+                              }`}>
+                                {request.plan}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-white font-semibold text-sm">
+                              ₸{request.amount.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-sm">
+                              {new Date(request.createdAt).toLocaleString('ru-RU', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleApprovePaymentRequest(request.id)}
+                                  disabled={paymentRequestLoading === request.id}
+                                  className="px-3 py-1.5 bg-green-600/20 text-green-400 hover:bg-green-600/30 rounded text-sm flex items-center gap-1 transition-colors disabled:opacity-50"
+                                >
+                                  {paymentRequestLoading === request.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Check className="w-4 h-4" />
+                                  )}
+                                  Подтвердить
+                                </button>
+                                <button
+                                  onClick={() => handleRejectPaymentRequest(request.id)}
+                                  disabled={paymentRequestLoading === request.id}
+                                  className="px-3 py-1.5 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded text-sm flex items-center gap-1 transition-colors disabled:opacity-50"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                  Отклонить
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </>

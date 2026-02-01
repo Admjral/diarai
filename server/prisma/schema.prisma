@@ -18,6 +18,7 @@ model User {
   subscriptionExpiresAt DateTime?
   subscriptionAutoRenew Boolean   @default(true)
   campaignEdits         CampaignHistory[] @relation("CampaignHistoryAdmin")
+  paymentRequests       PaymentRequest[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -496,4 +497,34 @@ enum MessageDeliveryStatus {
   delivered
   read
   failed
+}
+
+// ==========================================
+// PAYMENT REQUEST MODEL (Kaspi manual payment)
+// ==========================================
+
+model PaymentRequest {
+  id          Int                   @id @default(autoincrement())
+  userId      Int
+  user        User                  @relation(fields: [userId], references: [id])
+  plan        Plan                  // Pro или Business
+  amount      Int                   // 9900 или 24900
+  status      PaymentRequestStatus  @default(pending)
+  note        String?               // Заметка от клиента
+  adminNote   String?               // Заметка от админа
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  processedAt DateTime?             // Когда обработан
+  processedBy Int?                  // userId админа который обработал
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payment_requests")
+}
+
+enum PaymentRequestStatus {
+  pending   // Ожидает проверки
+  approved  // Одобрен (подписка активирована)
+  rejected  // Отклонён
 }

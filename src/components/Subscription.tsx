@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle, Menu, X, Wallet, CreditCard, Loader2 } from 'lucide-react';
+import { ArrowLeft, Check, Sparkles, Zap, Crown, MessageCircle, Menu, X, Wallet, CreditCard, Loader2, Clock, ExternalLink } from 'lucide-react';
 import type { Screen } from '../types';
-import { userAPI, paymentAPI, walletAPI } from '../lib/api';
+import { userAPI, paymentAPI, walletAPI, paymentRequestAPI, PaymentRequest } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
+
+const KASPI_LINK = 'https://pay.kaspi.kz/pay/7wfg2vrb';
 
 interface SubscriptionProps {
   user: { name: string; plan: 'Free' | 'Pro' | 'Business' } | null;
@@ -18,19 +20,30 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [showPaymentMethod, setShowPaymentMethod] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<PaymentRequest | null>(null);
+  const [showKaspiConfirm, setShowKaspiConfirm] = useState<string | null>(null); // plan name
 
-  // Загружаем баланс кошелька при монтировании
+  // Загружаем баланс кошелька и pending запросы при монтировании
   useEffect(() => {
-    const loadWallet = async () => {
+    const loadData = async () => {
       try {
-        const wallet = await walletAPI.getWallet();
+        const [wallet, myRequests] = await Promise.all([
+          walletAPI.getWallet(),
+          paymentRequestAPI.getMy()
+        ]);
         setWalletBalance(parseFloat(wallet.balance));
+
+        // Ищем pending запрос
+        const pending = myRequests.find(r => r.status === 'pending');
+        if (pending) {
+          setPendingRequest(pending);
+        }
       } catch (error) {
-        console.error('Ошибка загрузки кошелька:', error);
+        console.error('Ошибка загрузки данных:', error);
         setWalletBalance(0);
       }
     };
-    loadWallet();
+    loadData();
   }, []);
 
   // Обработка возврата с Kaspi
@@ -111,52 +124,73 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
       return;
     }
 
+    if (paymentMethod === 'kaspi') {
+      // Показываем Kaspi flow
+      setShowPaymentMethod(null);
+      setShowKaspiConfirm(selectedPlan);
+      // Открываем Kaspi ссылку в новой вкладке
+      window.open(KASPI_LINK, '_blank');
+      return;
+    }
+
     setLoading(selectedPlan);
     setShowPaymentMethod(null);
 
     try {
-      if (paymentMethod === 'wallet') {
-        // Оплата через кошелек
-        const result = await paymentAPI.subscribe({
-          plan,
-          paymentMethod: 'wallet',
-        });
+      // Оплата через кошелек
+      const result = await paymentAPI.subscribe({
+        plan,
+        paymentMethod: 'wallet',
+      });
 
-        if (result.success) {
-          // Обновляем баланс
-          if (result.newBalance !== undefined) {
-            setWalletBalance(result.newBalance);
-          }
-          // Обновляем план
-          if (onPlanUpdate) {
-            onPlanUpdate(plan);
-          }
-          showToast(t.subscription.subscriptionActivated, 'success');
+      if (result.success) {
+        // Обновляем баланс
+        if (result.newBalance !== undefined) {
+          setWalletBalance(result.newBalance);
         }
-      } else {
-        // Оплата через Kaspi
-        const result = await paymentAPI.subscribe({
-          plan,
-          paymentMethod: 'kaspi',
-        });
-
-        if (result.success && result.paymentUrl) {
-          // Перенаправляем на Kaspi
-          window.location.href = result.paymentUrl;
-        } else {
-          showToast(t.subscription.kaspiOrderError, 'error');
-          setLoading(null);
+        // Обновляем план
+        if (onPlanUpdate) {
+          onPlanUpdate(plan);
         }
+        showToast(t.subscription.subscriptionActivated, 'success');
       }
     } catch (error: any) {
       console.error('Ошибка при оплате:', error);
-      
+
       if (error.message?.includes('Недостаточно средств')) {
         showToast(t.subscription.insufficientFunds, 'error');
         setShowPaymentMethod(selectedPlan);
       } else {
         showToast(error.message || t.subscription.paymentError, 'error');
       }
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  // Обработка подтверждения оплаты Kaspi
+  const handleKaspiConfirm = async () => {
+    if (!showKaspiConfirm) return;
+
+    const planMap: Record<string, 'Pro' | 'Business'> = {
+      'PRO': 'Pro',
+      'BUSINESS': 'Business',
+    };
+
+    const plan = planMap[showKaspiConfirm];
+    if (!plan) return;
+
+    setLoading(showKaspiConfirm);
+
+    try {
+      const request = await paymentRequestAPI.create(plan);
+      setPendingRequest(request);
+      setShowKaspiConfirm(null);
+      setSelectedPlan(null);
+      showToast('Запрос на активацию отправлен! Ожидайте подтверждения.', 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Ошибка создания запроса', 'error');
+    } finally {
       setLoading(null);
     }
   };
@@ -286,6 +320,78 @@ export function Subscription({ user, onNavigate, showToast, onPlanUpdate }: Subs
             {t.subscription.selectPlanDescription}
           </p>
         </div>
+
+        {/* Pending Payment Request Banner */}
+        {pendingRequest && (
+          <div className="mb-8 p-6 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-6 h-6 text-yellow-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-white mb-1">Ваш запрос на рассмотрении</h3>
+                <p className="text-gray-400 mb-2">
+                  План: <span className="text-white font-medium">{pendingRequest.plan}</span> •
+                  Сумма: <span className="text-white font-medium">₸{pendingRequest.amount.toLocaleString()}</span>
+                </p>
+                <p className="text-sm text-gray-500">
+                  Мы проверяем вашу оплату. Обычно это занимает несколько часов в рабочее время.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Kaspi Confirmation Dialog */}
+        {showKaspiConfirm && (
+          <div className="mb-8 p-6 bg-blue-500/10 border border-blue-500/30 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <CreditCard className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-white mb-2">Оплата через Kaspi</h3>
+                <p className="text-gray-400 mb-4">
+                  Переведите <span className="text-white font-medium">
+                    ₸{showKaspiConfirm === 'PRO' ? '9,900' : '24,900'}
+                  </span> по ссылке Kaspi и нажмите "Я оплатил" для активации подписки.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <a
+                    href={KASPI_LINK}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Открыть Kaspi
+                  </a>
+                  <button
+                    onClick={handleKaspiConfirm}
+                    disabled={loading === showKaspiConfirm}
+                    className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {loading === showKaspiConfirm ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    Я оплатил
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowKaspiConfirm(null);
+                      setSelectedPlan(null);
+                    }}
+                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
