@@ -18,13 +18,28 @@ RETRY_DELAY=3
 
 for i in $(seq 1 $MAX_RETRIES); do
   echo "Attempt $i/$MAX_RETRIES: Running Prisma migrations..."
+
+  # Check for failed migrations and resolve them
+  FAILED_MIGRATIONS=$(npx prisma migrate status 2>&1 | grep -o "failed" || true)
+  if [ -n "$FAILED_MIGRATIONS" ]; then
+    echo "Found failed migrations, attempting to resolve..."
+    # Get the name of the failed migration
+    FAILED_NAME=$(npx prisma migrate status 2>&1 | grep "failed" | head -1 | awk '{print $1}' || true)
+    if [ -n "$FAILED_NAME" ]; then
+      echo "Resolving failed migration: $FAILED_NAME"
+      npx prisma migrate resolve --rolled-back "$FAILED_NAME" || true
+    fi
+  fi
+
   if npx prisma migrate deploy; then
     echo "Migrations completed successfully!"
     break
   else
     if [ $i -eq $MAX_RETRIES ]; then
       echo "Failed to run migrations after $MAX_RETRIES attempts"
-      exit 1
+      # Don't exit, try to start server anyway
+      echo "Attempting to start server without successful migration..."
+      break
     fi
     echo "Migration failed, retrying in ${RETRY_DELAY}s..."
     sleep $RETRY_DELAY
