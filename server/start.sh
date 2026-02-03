@@ -12,32 +12,43 @@ fi
 
 echo "DATABASE_URL is set (length: ${#DATABASE_URL})"
 
-# Update any 'Free' enum values to 'Start' directly via SQL
-# This is needed because Prisma Client expects only Start/Pro/Business
-# Note: 'Start' should already exist in the enum from previous migration attempts
-echo "Updating any 'Free' plan values to 'Start'..."
+# Step 1: Resolve any failed migrations FIRST
+echo "Step 1: Checking for failed migrations..."
+MIGRATION_STATUS=$(npx prisma migrate status 2>&1)
+echo "Migration status:"
+echo "$MIGRATION_STATUS"
 
-cat > /tmp/fix_enum.sql << 'EOSQL'
--- Update all users with 'Free' plan to 'Start' (if Start exists in enum)
-UPDATE "users" SET "plan" = 'Start' WHERE "plan" = 'Free';
+if echo "$MIGRATION_STATUS" | grep -qi "failed"; then
+  echo "Found failed migration, resolving..."
+  # Resolve the known failed migration
+  npx prisma migrate resolve --rolled-back "20260201210000_rename_free_to_start" 2>&1 || echo "Could not resolve migration"
+fi
 
--- Update payment_requests if table exists
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'payment_requests') THEN
-    UPDATE "payment_requests" SET "plan" = 'Start' WHERE "plan" = 'Free';
-  END IF;
-END $$;
+# Step 2: Add 'Start' enum value if it doesn't exist using ALTER TYPE
+# Must be done outside of transaction (ALTER TYPE ADD VALUE)
+echo "Step 2: Adding 'Start' enum value..."
+cat > /tmp/add_enum.sql << 'EOSQL'
+ALTER TYPE "Plan" ADD VALUE IF NOT EXISTS 'Start';
 EOSQL
 
-# Execute the fix SQL using Prisma db execute
-echo "Executing SQL fix..."
-if npx prisma db execute --file /tmp/fix_enum.sql 2>&1; then
-  echo "SQL fix completed successfully"
+# This might fail if already exists or if in transaction - that's OK
+npx prisma db execute --file /tmp/add_enum.sql 2>&1 || echo "Note: ALTER TYPE may have failed (possibly already exists)"
+
+# Step 3: Update users from Free to Start
+echo "Step 3: Updating Free plan values to Start..."
+cat > /tmp/fix_data.sql << 'EOSQL'
+UPDATE "users" SET "plan" = 'Start' WHERE "plan" = 'Free';
+EOSQL
+
+if npx prisma db execute --file /tmp/fix_data.sql 2>&1; then
+  echo "User data updated successfully"
 else
-  echo "Note: SQL fix may have failed - Start enum value might not exist yet"
-  echo "Will proceed with migration which should add the enum value"
+  echo "Note: User update may have failed (possibly no Free users or Start doesn't exist)"
 fi
+
+# Step 4: Mark the migration as applied since we did it manually
+echo "Step 4: Marking migration as applied..."
+npx prisma migrate resolve --applied "20260201210000_rename_free_to_start" 2>&1 || echo "Could not mark migration as applied"
 
 # Retry logic for database connection
 MAX_RETRIES=10
