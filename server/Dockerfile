@@ -1,14 +1,12 @@
-# Backend Dockerfile for Railway deployment
-# Build version: 2026-02-03-v8-cache-bust
-# NOTE: Build context is repository ROOT, not server/
-
-# Cache buster argument - change this value to force rebuild
-ARG CACHE_BUST=20260203_165500
+# DIAR AI Backend Dockerfile
+# Version: v9-2026-02-03-16:15
+# Railway deployment with Docker
+# CACHE INVALIDATION: 1707055300
 
 FROM node:20-slim AS builder
 
-# Print cache bust value to verify it's fresh
-RUN echo "Cache bust: ${CACHE_BUST}"
+# Force cache invalidation by echoing build timestamp
+RUN echo "Build timestamp: 2026-02-03T16:15:00Z" && date
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
