@@ -320,8 +320,8 @@ export async function generateAdImage(
 
     const prompt = `Professional advertising image for "${campaignName}"${descriptionText}. Style: ${style}. High resolution, suitable for social media marketing and digital ads. No text, no logos, no watermarks.`;
 
-    // Вызов Imagen через Generative AI REST API
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+    // Используем Gemini 2.0 Flash Image Generation (рабочая модель)
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${apiKey}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -329,33 +329,47 @@ export async function generateAdImage(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: '1:1',
-          safetyFilterLevel: 'BLOCK_MEDIUM_AND_ABOVE',
+        contents: [{
+          parts: [{
+            text: `Generate image: ${prompt}`
+          }]
+        }],
+        generationConfig: {
+          responseModalities: ['IMAGE', 'TEXT'],
         },
       }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Imagen API error:', response.status, errorData);
-
-      // Если Imagen не доступен, попробуем альтернативный эндпоинт
-      return await generateImageFallback(prompt, apiKey);
+      console.error('Gemini Image Generation API error:', response.status, errorData);
+      return null;
     }
 
-    const data = await response.json() as { predictions?: Array<{ bytesBase64Encoded?: string }> };
+    const data = await response.json() as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            inlineData?: { mimeType?: string; data?: string }
+          }>
+        }
+      }>
+    };
 
-    if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
-      const base64Image = data.predictions[0].bytesBase64Encoded;
-      console.log('✅ Изображение сгенерировано через Imagen');
-      return `data:image/png;base64,${base64Image}`;
+    // Ищем изображение в ответе
+    const candidates = data.candidates || [];
+    for (const candidate of candidates) {
+      const parts = candidate.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.mimeType?.startsWith('image/')) {
+          console.log('✅ Изображение сгенерировано через Gemini 2.0 Flash');
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
     }
 
-    console.log('Imagen не вернул изображение, пробуем альтернативу');
-    return await generateImageFallback(prompt, apiKey);
+    console.log('Gemini не вернул изображение');
+    return null;
   } catch (error) {
     console.error('Ошибка при генерации изображения через Imagen:', error);
     return null;
