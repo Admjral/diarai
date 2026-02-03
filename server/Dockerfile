@@ -3,7 +3,7 @@
 # NOTE: Build context is repository ROOT, not server/
 
 # Cache buster argument - change this value to force rebuild
-ARG CACHE_BUST=20260203_114800
+ARG CACHE_BUST=20260203_165500
 
 FROM node:20-slim AS builder
 
@@ -47,11 +47,9 @@ RUN npm install --omit=dev
 # Генерируем Prisma Client
 RUN npx prisma generate
 
-# Копируем собранный код
+# Копируем собранный код и start скрипт из builder
 COPY --from=builder /app/dist ./dist
-
-# Копируем start скрипт
-COPY server/start.sh ./start.sh
+COPY --from=builder /app/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
 # Создаем директорию для uploads
