@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth.middleware';
 import {
   createTopUpRequest,
   getMyTopUpRequests,
@@ -13,8 +12,7 @@ import {
 
 const router = Router();
 
-// Защищаем все роуты аутентификацией
-router.use(authenticateToken);
+// Аутентификация уже применена в index.ts: app.use('/api/wallet-topup', auth, walletTopUpRoutes)
 
 // Клиентские роуты
 router.post('/', createTopUpRequest);
