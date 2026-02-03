@@ -7,7 +7,7 @@
 | Сервис | ID |
 |--------|-----|
 | backend | `46fb55af-941c-420c-9bdf-d0936055fdec` |
-| frontend | `4b168fc0-c896-4cb3-babd-bdeeb2f8a717` |
+| frontend | `b120264f-9a6e-4aa7-855c-d25872303a5b` |
 | messenger-service | `1d44198e-c2d3-450a-a13e-a893c7693367` |
 | Postgres | `34c220c0-693c-4900-8dd9-a5789c5e888c` |
 | environment | `e0ac84af-4a63-44db-8d83-7e4c2140f6ed` |
@@ -56,13 +56,33 @@ curl -s -X POST ... -d '{"query":"mutation { serviceConnect(id: \"SERVICE_ID\", 
 
 ## Dockerfile
 
-### Правило: пути от корня репозитория
-`railway.toml` указывает `dockerfilePath = "server/Dockerfile"`, контекст = корень репо.
+### ВАЖНО: Два разных Dockerfile!
 
+| Сервис | Dockerfile | railway.toml |
+|--------|------------|--------------|
+| Backend | `server/Dockerfile` | `server/railway.toml` |
+| Frontend | `Dockerfile` (корень) | НЕТ (удалён из корня) |
+
+**КРИТИЧНО:** `railway.toml` в корне применяется ко ВСЕМ сервисам!
+- Если frontend показывает ошибку `DATABASE_URL is not set` — он использует backend Dockerfile
+- Решение: удалить `railway.toml` из корня, оставить только `server/railway.toml`
+
+### Backend Dockerfile (server/Dockerfile)
 ```dockerfile
 COPY server/package*.json ./
 COPY server/prisma ./prisma/
 COPY server/ .
+```
+
+### Frontend Dockerfile (корень)
+```dockerfile
+# Копировать ТОЛЬКО frontend файлы!
+COPY package*.json ./
+COPY public ./public
+COPY src ./src
+COPY index.html ./
+COPY vite.config.ts ./
+# НЕ копировать server/!
 ```
 
 ### Правило: копировать из builder stage
@@ -110,7 +130,23 @@ Frontend деплоится на Railway (НЕ Vercel!).
 curl -s -X POST "https://backboard.railway.app/graphql/v2" \
   -H "Authorization: Bearer $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query":"mutation { serviceInstanceRedeploy(serviceId: \"4b168fc0-c896-4cb3-babd-bdeeb2f8a717\", environmentId: \"e0ac84af-4a63-44db-8d83-7e4c2140f6ed\") }"}'
+  -d '{"query":"mutation { serviceInstanceRedeploy(serviceId: \"b120264f-9a6e-4aa7-855c-d25872303a5b\", environmentId: \"e0ac84af-4a63-44db-8d83-7e4c2140f6ed\") }"}'
+```
+
+### Проверить статус деплоя
+```bash
+curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "query { deployments(first: 3, input: { serviceId: \"SERVICE_ID\" }) { edges { node { id status createdAt } } } }"}'
+```
+
+### Получить логи деплоя
+```bash
+curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "query { deploymentLogs(deploymentId: \"DEPLOYMENT_ID\", limit: 50) { message timestamp } }"}'
 ```
 
 ### Очистка кеша браузера
@@ -138,11 +174,42 @@ Admin: Видит запрос → Подтверждает → Баланс у�
 
 ---
 
+## Gemini AI (НЕ OpenAI!)
+
+Проект использует **Google Gemini**, не OpenAI. Переменная окружения: `GEMINI_API_KEY`
+
+### Модели
+| Задача | Модель |
+|--------|--------|
+| Генерация текста | `gemini-2.0-flash` |
+| Генерация изображений | `gemini-2.0-flash-exp-image-generation` |
+
+### Файл
+`server/src/services/openai.service.ts` (название осталось от OpenAI, но внутри Gemini)
+
+### Проверка API ключа
+```bash
+curl "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_API_KEY"
+```
+
+### Добавить ключ в Railway
+```bash
+curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"mutation { variableUpsert(input: { projectId: \"9359e0b8-249a-4fbd-93c0-d67a6139f954\", environmentId: \"e0ac84af-4a63-44db-8d83-7e4c2140f6ed\", serviceId: \"46fb55af-941c-420c-9bdf-d0936055fdec\", name: \"GEMINI_API_KEY\", value: \"YOUR_KEY\" }) }"}'
+```
+
+---
+
 ## Важные уроки
 
 1. **Auth middleware** уже применён в `index.ts` - роуты НЕ должны импортировать его повторно
 2. **Railway кеширует репозиторий** - при проблемах удалить и пересоздать сервис
-3. **dockerfilePath** должен быть `server/Dockerfile` в railway.toml
-4. **Railway frontend** - редеплой через API или push в main
-5. **GitHub credentials** хранятся в `credentinals.txt` (НЕ коммитить!)
-6. **Wallet top-up** использует QR-код, не Kaspi API - если видишь ошибку про KASPI_MERCHANT_ID, frontend устарел
+3. **dockerfilePath** для backend в `server/railway.toml`, НЕ в корне
+4. **railway.toml в корне** применяется ко ВСЕМ сервисам — удалить если мешает frontend
+5. **Railway frontend** - редеплой через API или push в main
+6. **GitHub credentials** хранятся в `credentinals.txt` (НЕ коммитить!)
+7. **Wallet top-up** использует QR-код, не Kaspi API - если видишь ошибку про KASPI_MERCHANT_ID, frontend устарел
+8. **AI использует Gemini**, не OpenAI - если ошибка про OpenAI API key, проверь GEMINI_API_KEY
+9. **Два деплоя при push** - нормально, оба сервиса подключены к одному репо
