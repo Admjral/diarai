@@ -65,7 +65,7 @@ export async function generateAdText(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const platformInfo = platforms && platforms.length > 0
       ? `\nПлатформы для размещения: ${platforms.join(', ')}`
@@ -139,7 +139,7 @@ export async function generateRecommendations(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const descriptionText = description ? `\n\nОписание бизнеса/продукта: ${description}` : '';
 
@@ -196,7 +196,7 @@ export async function analyzeCampaignCategory(campaignName: string, description?
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const descriptionText = description ? `\nОписание: ${description}` : '';
 
@@ -244,7 +244,7 @@ export async function generateAudienceInterests(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const descriptionText = description ? `\nОписание: ${description}` : '';
 
