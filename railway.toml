@@ -1,10 +1,9 @@
 # Railway configuration for Backend service (root level)
-# This file is used when deploying from repository root
+# NOTE: rootDirectory is set to "server" via Railway API
+# This file is kept for reference
 
 [build]
-# Use the Dockerfile from server directory
-dockerfilePath = "server/Dockerfile"
-# Build context is the server directory
+dockerfilePath = "Dockerfile"
 builder = "DOCKERFILE"
 
 [deploy]

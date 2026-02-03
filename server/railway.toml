@@ -1,4 +1,5 @@
 # Railway configuration for Backend service
+# This is the primary config when rootDirectory is set to "server"
 
 [build]
 dockerfilePath = "Dockerfile"
