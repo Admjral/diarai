@@ -9,31 +9,35 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy source code (excluding server folder)
+COPY public ./public
+COPY src ./src
+COPY index.html ./
+COPY vite.config.ts ./
+COPY tsconfig*.json ./
+COPY tailwind.config.ts ./
+COPY postcss.config.js ./
+COPY components.json ./
 
 # Build the app
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
-# Production stage with nginx
-FROM nginx:alpine
+# Production stage - use serve instead of nginx
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install serve
+RUN npm install -g serve
 
 # Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist ./dist
 
-# Copy nginx config for SPA routing
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Railway uses PORT env variable
+ENV PORT=3000
+EXPOSE ${PORT}
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+# Serve the app with SPA mode
+CMD ["sh", "-c", "serve -s dist -l ${PORT}"]
