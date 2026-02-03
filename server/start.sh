@@ -12,28 +12,13 @@ fi
 
 echo "DATABASE_URL is set (length: ${#DATABASE_URL})"
 
-# First, fix any 'Free' enum values to 'Start' directly via SQL
+# Update any 'Free' enum values to 'Start' directly via SQL
 # This is needed because Prisma Client expects only Start/Pro/Business
-echo "Fixing any 'Free' enum values to 'Start'..."
+# Note: 'Start' should already exist in the enum from previous migration attempts
+echo "Updating any 'Free' plan values to 'Start'..."
 
-# Extract connection details and run SQL
-# Use npx prisma db execute to run raw SQL
 cat > /tmp/fix_enum.sql << 'EOSQL'
--- Add 'Start' enum value if it doesn't exist
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum
-    WHERE enumlabel = 'Start'
-    AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'Plan')
-  ) THEN
-    INSERT INTO pg_enum (enumtypid, enumlabel, enumsortorder)
-    SELECT t.oid, 'Start', (SELECT MAX(enumsortorder) + 1 FROM pg_enum WHERE enumtypid = t.oid)
-    FROM pg_type t WHERE t.typname = 'Plan';
-  END IF;
-END $$;
-
--- Update all users with 'Free' plan to 'Start'
+-- Update all users with 'Free' plan to 'Start' (if Start exists in enum)
 UPDATE "users" SET "plan" = 'Start' WHERE "plan" = 'Free';
 
 -- Update payment_requests if table exists
@@ -46,7 +31,13 @@ END $$;
 EOSQL
 
 # Execute the fix SQL using Prisma db execute
-npx prisma db execute --file /tmp/fix_enum.sql 2>&1 || echo "Note: SQL fix may have partially succeeded"
+echo "Executing SQL fix..."
+if npx prisma db execute --file /tmp/fix_enum.sql 2>&1; then
+  echo "SQL fix completed successfully"
+else
+  echo "Note: SQL fix may have failed - Start enum value might not exist yet"
+  echo "Will proceed with migration which should add the enum value"
+fi
 
 # Retry logic for database connection
 MAX_RETRIES=10
