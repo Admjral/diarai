@@ -1,10 +1,14 @@
-# Frontend Dockerfile
+# Frontend Dockerfile (NOT for backend!)
 FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy everything except what's in .dockerignore
-COPY . .
+# Copy only frontend files (not server/)
+COPY package*.json ./
+COPY public ./public
+COPY src ./src
+COPY index.html ./
+COPY vite.config.ts ./
 
 # Install dependencies
 RUN npm install
@@ -19,14 +23,11 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install serve for static file hosting
+# Install serve
 RUN npm install -g serve@14
 
-# Copy built files
+# Copy only built files
 COPY --from=builder /app/dist ./dist
 
-# Railway uses PORT env variable
-EXPOSE ${PORT:-3000}
-
-# Serve the app with SPA mode on dynamic PORT
+# Serve static files on Railway's PORT
 CMD serve -s dist -l ${PORT:-3000}
