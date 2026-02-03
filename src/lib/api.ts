@@ -1194,3 +1194,67 @@ export const paymentRequestAPI = {
     }),
 };
 
+// =====================
+// WALLET TOP-UP API (QR-code payment)
+// =====================
+
+export interface WalletTopUpRequest {
+  id: number;
+  userId: number;
+  amount: string;
+  status: 'pending_payment' | 'paid' | 'approved' | 'rejected';
+  note?: string;
+  adminNote?: string;
+  createdAt: string;
+  updatedAt: string;
+  paidAt?: string;
+  processedAt?: string;
+  processedBy?: number;
+  user?: {
+    id: number;
+    email: string;
+    name: string;
+  };
+}
+
+export const walletTopUpAPI = {
+  // Клиентские методы
+  create: (amount: number, note?: string) =>
+    request<{ message: string; request: WalletTopUpRequest }>('/api/wallet-topup', {
+      method: 'POST',
+      body: JSON.stringify({ amount, note }),
+    }),
+
+  getMy: () =>
+    request<WalletTopUpRequest[]>('/api/wallet-topup/my'),
+
+  getMyActive: () =>
+    request<WalletTopUpRequest | null>('/api/wallet-topup/my/active'),
+
+  markAsPaid: (id: number) =>
+    request<{ success: boolean; message: string; request: WalletTopUpRequest }>(`/api/wallet-topup/${id}/paid`, {
+      method: 'PUT',
+    }),
+
+  // Админские методы
+  getAll: (status?: string) => {
+    const query = status ? `?status=${status}` : '';
+    return request<{ requests: WalletTopUpRequest[]; counts: { pending_payment: number; paid: number } }>(`/api/wallet-topup/admin${query}`);
+  },
+
+  getPendingCount: () =>
+    request<{ count: number }>('/api/wallet-topup/admin/count'),
+
+  approve: (id: number, adminNote?: string) =>
+    request<{ success: boolean; message: string; request: WalletTopUpRequest; newBalance: string }>(`/api/wallet-topup/admin/${id}/approve`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminNote }),
+    }),
+
+  reject: (id: number, adminNote?: string) =>
+    request<{ success: boolean; message: string; request: WalletTopUpRequest }>(`/api/wallet-topup/admin/${id}/reject`, {
+      method: 'PUT',
+      body: JSON.stringify({ adminNote }),
+    }),
+};
+

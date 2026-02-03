@@ -65,6 +65,7 @@ import notificationsRoutes from './routes/notifications.routes';
 import exportRoutes from './routes/export.routes';
 import messengerRoutes from './routes/messenger.routes';
 import paymentRequestRoutes from './routes/payment-request.routes';
+import walletTopUpRoutes from './routes/wallet-topup.routes';
 import { getSessionByWhatsAppId, getSessionByInstagramAccount, getSessionByTelegramBot } from './controllers/messenger.controller';
 
 const app = express();
@@ -151,6 +152,7 @@ app.use('/api/integrations', auth, integrationsRoutes);
 app.use('/api/notifications', auth, notificationsRoutes);
 app.use('/api/export', auth, exportRoutes);
 app.use('/api/payment-requests', auth, paymentRequestRoutes);
+app.use('/api/wallet-topup', auth, walletTopUpRoutes);
 // Messenger webhook - без auth (проверка API key внутри)
 app.post('/api/messenger/webhook', webhookLimiter, (req, res, next) => {
   const apiKey = req.headers['x-api-key'];

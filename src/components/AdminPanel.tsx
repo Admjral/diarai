@@ -1,7 +1,7 @@
 import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser, paymentRequestAPI, PaymentRequest } from '../lib/api';
+import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser, paymentRequestAPI, PaymentRequest, walletTopUpAPI, WalletTopUpRequest } from '../lib/api';
 import { Toast } from './Toast';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -10,7 +10,7 @@ interface AdminPanelProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-type Tab = 'stats' | 'users' | 'campaigns' | 'wallets' | 'payment-requests';
+type Tab = 'stats' | 'users' | 'campaigns' | 'wallets' | 'payment-requests' | 'wallet-topup';
 
 export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const { t } = useLanguage();
@@ -24,6 +24,11 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [paymentRequestLoading, setPaymentRequestLoading] = useState<number | null>(null);
+
+  // Wallet top-up requests state
+  const [walletTopUpRequests, setWalletTopUpRequests] = useState<WalletTopUpRequest[]>([]);
+  const [walletTopUpPendingCount, setWalletTopUpPendingCount] = useState(0);
+  const [walletTopUpLoading, setWalletTopUpLoading] = useState<number | null>(null);
   
   // Фильтры и поиск
   const [userSearch, setUserSearch] = useState('');
@@ -131,10 +136,33 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     }
   }, []);
 
+  // Загрузка wallet top-up requests
+  const loadWalletTopUpRequests = useCallback(async () => {
+    try {
+      const result = await walletTopUpAPI.getAll();
+      setWalletTopUpRequests(result.requests);
+      setWalletTopUpPendingCount(result.counts.paid);
+    } catch (error: any) {
+      console.error('Ошибка загрузки запросов на пополнение:', error);
+      showToast('Ошибка загрузки запросов на пополнение', 'error');
+    }
+  }, [showToast]);
+
+  // Загрузка wallet top-up pending count
+  const loadWalletTopUpPendingCount = useCallback(async () => {
+    try {
+      const result = await walletTopUpAPI.getPendingCount();
+      setWalletTopUpPendingCount(result.count);
+    } catch (error: any) {
+      console.error('Ошибка загрузки количества запросов на пополнение:', error);
+    }
+  }, []);
+
   // Загрузка pending count при монтировании
   useEffect(() => {
     loadPendingCount();
-  }, [loadPendingCount]);
+    loadWalletTopUpPendingCount();
+  }, [loadPendingCount, loadWalletTopUpPendingCount]);
 
   // Загрузка данных при смене вкладки
   useEffect(() => {
@@ -156,11 +184,14 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
         case 'payment-requests':
           await loadPaymentRequests();
           break;
+        case 'wallet-topup':
+          await loadWalletTopUpRequests();
+          break;
       }
       setLoading(false);
     };
     loadData();
-  }, [activeTab, loadStats, loadUsers, loadCampaigns, loadWallets, loadPaymentRequests]);
+  }, [activeTab, loadStats, loadUsers, loadCampaigns, loadWallets, loadPaymentRequests, loadWalletTopUpRequests]);
 
   // Обновление плана пользователя
   const handleUpdatePlan = useCallback(async (userId: number, plan: 'Start' | 'Pro' | 'Business') => {
@@ -404,6 +435,40 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     }
   }, [loadPaymentRequests, loadPendingCount, showToast]);
 
+  // Одобрить запрос на пополнение кошелька
+  const handleApproveWalletTopUp = useCallback(async (id: number) => {
+    setWalletTopUpLoading(id);
+    try {
+      const result = await walletTopUpAPI.approve(id);
+      showToast(result.message || 'Пополнение подтверждено', 'success');
+      await loadWalletTopUpRequests();
+      await loadWalletTopUpPendingCount();
+      await loadWallets();
+    } catch (error: any) {
+      console.error('Ошибка подтверждения пополнения:', error);
+      showToast(error.message || 'Ошибка подтверждения пополнения', 'error');
+    } finally {
+      setWalletTopUpLoading(null);
+    }
+  }, [loadWalletTopUpRequests, loadWalletTopUpPendingCount, loadWallets, showToast]);
+
+  // Отклонить запрос на пополнение кошелька
+  const handleRejectWalletTopUp = useCallback(async (id: number) => {
+    const note = prompt('Причина отклонения (необязательно):');
+    setWalletTopUpLoading(id);
+    try {
+      await walletTopUpAPI.reject(id, note || undefined);
+      showToast('Запрос отклонён', 'info');
+      await loadWalletTopUpRequests();
+      await loadWalletTopUpPendingCount();
+    } catch (error: any) {
+      console.error('Ошибка отклонения запроса:', error);
+      showToast(error.message || 'Ошибка отклонения запроса', 'error');
+    } finally {
+      setWalletTopUpLoading(null);
+    }
+  }, [loadWalletTopUpRequests, loadWalletTopUpPendingCount, showToast]);
+
   // Открыть модальное окно для загрузки статистики
   const openStatsModal = useCallback((campaign: CampaignWithUser) => {
     setSelectedCampaignForStats(campaign);
@@ -531,7 +596,8 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
               { id: 'users' as Tab, label: t.adminPanel.tabs.users, icon: Users },
               { id: 'campaigns' as Tab, label: t.adminPanel.tabs.campaigns, icon: Megaphone },
               { id: 'wallets' as Tab, label: t.adminPanel.tabs.wallets, icon: Wallet },
-              { id: 'payment-requests' as Tab, label: 'Запросы на оплату', icon: CreditCard, badge: pendingCount },
+              { id: 'payment-requests' as Tab, label: 'Подписки', icon: CreditCard, badge: pendingCount },
+              { id: 'wallet-topup' as Tab, label: 'Пополнения', icon: Plus, badge: walletTopUpPendingCount },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1158,6 +1224,117 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                                   Отклонить
                                 </button>
                               </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Пополнения кошелька */}
+            {activeTab === 'wallet-topup' && (
+              <div className="space-y-4">
+                {walletTopUpRequests.length === 0 ? (
+                  <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-8 text-center">
+                    <Wallet className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-white mb-2">Нет запросов на пополнение</h3>
+                    <p className="text-gray-400">Запросы на пополнение кошелька будут отображаться здесь.</p>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Пользователь</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Сумма</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Статус</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Создан</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Оплатил</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {walletTopUpRequests.map(request => (
+                          <tr key={request.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
+                            <td className="px-4 py-3 text-white text-sm">
+                              <div>
+                                <p className="font-medium">{request.user?.name || 'N/A'}</p>
+                                <p className="text-gray-400 text-xs">{request.user?.email || `ID: ${request.userId}`}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-white font-semibold text-sm">
+                              ₸{parseFloat(request.amount).toLocaleString('ru-RU')}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                request.status === 'pending_payment'
+                                  ? 'bg-gray-500/20 text-gray-400'
+                                  : request.status === 'paid'
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : request.status === 'approved'
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {request.status === 'pending_payment' && 'В процессе оплаты'}
+                                {request.status === 'paid' && 'Оплатил'}
+                                {request.status === 'approved' && 'Подтверждено'}
+                                {request.status === 'rejected' && 'Отклонено'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-sm">
+                              {new Date(request.createdAt).toLocaleString('ru-RU', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-sm">
+                              {request.paidAt ? new Date(request.paidAt).toLocaleString('ru-RU', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.status === 'paid' ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleApproveWalletTopUp(request.id)}
+                                    disabled={walletTopUpLoading === request.id}
+                                    className="px-3 py-1.5 bg-green-600/20 text-green-400 hover:bg-green-600/30 rounded text-sm flex items-center gap-1 transition-colors disabled:opacity-50"
+                                  >
+                                    {walletTopUpLoading === request.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Check className="w-4 h-4" />
+                                    )}
+                                    Подтвердить
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectWalletTopUp(request.id)}
+                                    disabled={walletTopUpLoading === request.id}
+                                    className="px-3 py-1.5 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded text-sm flex items-center gap-1 transition-colors disabled:opacity-50"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                    Отклонить
+                                  </button>
+                                </div>
+                              ) : request.status === 'pending_payment' ? (
+                                <span className="text-gray-500 text-sm">Ожидание оплаты...</span>
+                              ) : request.status === 'approved' ? (
+                                <span className="text-green-400 text-sm flex items-center gap-1">
+                                  <Check className="w-4 h-4" />
+                                  Зачислено
+                                </span>
+                              ) : (
+                                <span className="text-red-400 text-sm">{request.adminNote || 'Отклонено'}</span>
+                              )}
                             </td>
                           </tr>
                         ))}

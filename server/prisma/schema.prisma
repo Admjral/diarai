@@ -19,6 +19,7 @@ model User {
   subscriptionAutoRenew Boolean   @default(true)
   campaignEdits         CampaignHistory[] @relation("CampaignHistoryAdmin")
   paymentRequests       PaymentRequest[]
+  walletTopUpRequests   WalletTopUpRequest[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -527,4 +528,35 @@ enum PaymentRequestStatus {
   pending   // Ожидает проверки
   approved  // Одобрен (подписка активирована)
   rejected  // Отклонён
+}
+
+// ==========================================
+// WALLET TOP-UP REQUEST MODEL (QR-code payment)
+// ==========================================
+
+model WalletTopUpRequest {
+  id          Int                 @id @default(autoincrement())
+  userId      Int
+  user        User                @relation(fields: [userId], references: [id])
+  amount      Decimal             @db.Decimal(10, 2)
+  status      WalletTopUpStatus   @default(pending_payment)
+  note        String?             // Заметка от клиента
+  adminNote   String?             // Заметка от админа
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  paidAt      DateTime?           // Когда нажал "Оплатил"
+  processedAt DateTime?           // Когда обработан админом
+  processedBy Int?                // userId админа
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_topup_requests")
+}
+
+enum WalletTopUpStatus {
+  pending_payment  // Создан запрос, ждём оплаты
+  paid             // Нажал "Оплатил", ждём админа
+  approved         // Админ подтвердил, деньги зачислены
+  rejected         // Админ отклонил
 }

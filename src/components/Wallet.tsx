@@ -1,24 +1,30 @@
-import { Wallet as WalletIcon, Plus, RefreshCw, Loader2, ArrowDown, ArrowUp, CreditCard, Smartphone } from 'lucide-react';
+import { Wallet as WalletIcon, Plus, RefreshCw, Loader2, ArrowDown, ArrowUp, CreditCard, CheckCircle, Clock, ExternalLink, X } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-import { walletAPI, Wallet, WalletTransaction, APIError } from '../lib/api';
+import { walletAPI, walletTopUpAPI, Wallet, WalletTransaction, WalletTopUpRequest, APIError } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface WalletProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+type TopUpStep = 'idle' | 'amount' | 'qr' | 'waiting';
+
+const KASPI_PAYMENT_LINK = 'https://pay.kaspi.kz/pay/7wfg2vrb';
+
 export function Wallet({ showToast }: WalletProps) {
   const { t } = useLanguage();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdding, setIsAdding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'kaspi' | 'direct'>('kaspi');
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
+
+  // New top-up flow state
+  const [topUpStep, setTopUpStep] = useState<TopUpStep>('idle');
+  const [activeRequest, setActiveRequest] = useState<WalletTopUpRequest | null>(null);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -39,12 +45,11 @@ export function Wallet({ showToast }: WalletProps) {
       const data = await walletAPI.getWallet();
       setWallet(data);
       setError(null);
-      // Загружаем транзакции при загрузке кошелька
       await loadTransactions();
     } catch (error) {
       console.error('Ошибка при загрузке кошелька:', error);
       let errorMessage = t.wallet.loadError;
-      
+
       if (error instanceof APIError) {
         if (error.isNetworkError) {
           errorMessage = t.wallet.errorMessages.serverConnection;
@@ -53,13 +58,11 @@ export function Wallet({ showToast }: WalletProps) {
         } else if (error.statusCode === 401) {
           errorMessage = t.wallet.errorMessages.authError;
         } else if (error.statusCode === 500) {
-          // Проверяем детали ошибки от сервера
           const errorDetails = (error as any).errorDetails || (error as any).serverErrorData?.details;
           const serverErrorData = (error as any).serverErrorData;
-          
-          // Проверяем различные варианты сообщений об ошибке модели Wallet
-          const isWalletModelError = 
-            errorDetails?.message?.includes('Unknown model') || 
+
+          const isWalletModelError =
+            errorDetails?.message?.includes('Unknown model') ||
             errorDetails?.message?.includes('wallet') ||
             errorDetails?.message?.includes('Prisma Client') ||
             errorDetails?.message?.includes('не найдена') ||
@@ -70,7 +73,7 @@ export function Wallet({ showToast }: WalletProps) {
             serverErrorData?.error?.includes('Wallet') ||
             error.message?.includes('Wallet') ||
             error.message?.includes('prisma:generate');
-          
+
           if (isWalletModelError) {
             errorMessage = t.wallet.errorMessages.prismaModelNotFound;
           } else if (errorDetails?.message) {
@@ -87,20 +90,10 @@ export function Wallet({ showToast }: WalletProps) {
         } else {
           errorMessage = error.message || t.wallet.loadError;
         }
-        
-        const errorDetails = (error as any).errorDetails || (error as any).serverErrorData?.details;
-        console.error('Детали ошибки API:', {
-          statusCode: error.statusCode,
-          isNetworkError: error.isNetworkError,
-          isServerError: error.isServerError,
-          message: error.message,
-          errorDetails: errorDetails,
-          serverErrorData: (error as any).serverErrorData,
-        });
       } else {
         errorMessage = t.wallet.errorMessages.connectionError;
       }
-      
+
       setError(errorMessage);
       showToast(errorMessage, 'error');
     } finally {
@@ -108,74 +101,83 @@ export function Wallet({ showToast }: WalletProps) {
     }
   }, [showToast, loadTransactions, t]);
 
+  // Check for active top-up request on load
+  const checkActiveRequest = useCallback(async () => {
+    try {
+      const request = await walletTopUpAPI.getMyActive();
+      if (request) {
+        setActiveRequest(request);
+        if (request.status === 'pending_payment') {
+          setTopUpStep('qr');
+          setAmount(request.amount);
+        } else if (request.status === 'paid') {
+          setTopUpStep('waiting');
+          setAmount(request.amount);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке активного запроса:', error);
+    }
+  }, []);
+
   useEffect(() => {
     loadWallet();
-    
-    // Проверяем параметры URL после возврата с Kaspi
-    const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get('status');
-    const orderId = urlParams.get('orderId');
-    
-    if (status === 'success' && orderId) {
-      showToast(t.wallet.paymentSuccess, 'success');
-      // Очищаем URL параметры
-      window.history.replaceState({}, '', window.location.pathname);
-      // Обновляем кошелек и транзакции через небольшую задержку
-      setTimeout(() => {
-        loadWallet();
-        loadTransactions();
-      }, 2000);
-    } else if (status === 'cancelled') {
-      showToast(t.wallet.paymentCancelled, 'info');
-      // Очищаем URL параметры
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [loadWallet, loadTransactions, showToast]);
+    checkActiveRequest();
+  }, [loadWallet, checkActiveRequest]);
 
-  const handleAddFunds = useCallback(async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      showToast(t.wallet.invalidAmount, 'error');
+  // Create top-up request
+  const handleCreateRequest = useCallback(async () => {
+    if (!amount || parseFloat(amount) < 100) {
+      showToast('Минимальная сумма пополнения 100 ₸', 'error');
       return;
     }
 
     try {
-      setIsAdding(true);
-      
-      if (paymentMethod === 'kaspi') {
-        // Создаем заказ в Kaspi для пополнения кошелька
-        const result = await walletAPI.createKaspiDepositOrder(parseFloat(amount));
-        
-        console.log('[Wallet] Результат создания заказа Kaspi:', result);
-        
-        if (result && result.paymentUrl) {
-          // Перенаправляем пользователя на страницу оплаты Kaspi
-          console.log('[Wallet] Перенаправление на:', result.paymentUrl);
-          window.location.href = result.paymentUrl;
-        } else {
-          console.error('[Wallet] paymentUrl отсутствует в результате:', result);
-          showToast(result?.message || t.wallet.paymentUrlError, 'error');
-          setIsAdding(false);
-        }
-      } else {
-        // Прямое пополнение (для тестирования или админов)
-        const result = await walletAPI.addFunds(parseFloat(amount));
-        showToast(t.wallet.walletToppedUp.replace('{amount}', parseFloat(amount).toLocaleString('ru-RU')), 'success');
-        setShowAddForm(false);
-        setAmount('');
-        await loadWallet();
-        setIsAdding(false);
-      }
+      setIsSubmitting(true);
+      const result = await walletTopUpAPI.create(parseFloat(amount), '');
+      setActiveRequest(result.request);
+      setTopUpStep('qr');
+      showToast('Запрос создан. Оплатите по QR-коду.', 'success');
     } catch (error) {
-      console.error('Ошибка при пополнении кошелька:', error);
+      console.error('Ошибка при создании запроса:', error);
       if (error instanceof APIError) {
-        showToast(error.message || t.wallet.addFundsError, 'error');
+        showToast(error.message || 'Ошибка при создании запроса', 'error');
       } else {
-        showToast(t.wallet.addFundsError, 'error');
+        showToast('Ошибка при создании запроса', 'error');
       }
-      setIsAdding(false);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [amount, paymentMethod, showToast, loadWallet]);
+  }, [amount, showToast]);
 
+  // Mark as paid
+  const handleMarkAsPaid = useCallback(async () => {
+    if (!activeRequest) return;
+
+    try {
+      setIsSubmitting(true);
+      const result = await walletTopUpAPI.markAsPaid(activeRequest.id);
+      setActiveRequest(result.request);
+      setTopUpStep('waiting');
+      showToast('Ожидайте подтверждения от администратора', 'info');
+    } catch (error) {
+      console.error('Ошибка при отметке оплаты:', error);
+      if (error instanceof APIError) {
+        showToast(error.message || 'Ошибка при обновлении статуса', 'error');
+      } else {
+        showToast('Ошибка при обновлении статуса', 'error');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [activeRequest, showToast]);
+
+  // Cancel/reset the flow
+  const handleCancel = useCallback(() => {
+    setTopUpStep('idle');
+    setAmount('');
+    // Note: We don't cancel the request on server, user can continue later
+  }, []);
 
   const formatBalance = (balance: string) => {
     const num = parseFloat(balance);
@@ -211,29 +213,6 @@ export function Wallet({ showToast }: WalletProps) {
         </div>
         <div className="text-center py-6">
           <p className="text-red-400 mb-2 font-medium">{error || t.wallet.loadError}</p>
-          {(error?.includes('prisma:generate') || error?.includes('Unknown model') || error?.includes('Модель Wallet') || error?.includes('Prisma Client')) && (
-            <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-4 mb-4 text-left">
-              <p className="text-yellow-400 text-sm font-semibold mb-3">{t.wallet.instructionTitle}</p>
-              <div className="space-y-2 mb-3">
-                <p className="text-gray-300 text-sm">{t.wallet.instructionStep1}</p>
-                <p className="text-gray-300 text-sm">{t.wallet.instructionStep2}</p>
-                <code className="text-yellow-400 text-xs block bg-black/50 p-2 rounded">
-                  cd server
-                </code>
-                <p className="text-gray-300 text-sm">{t.wallet.instructionStep3}</p>
-                <code className="text-yellow-400 text-xs block bg-black/50 p-2 rounded mb-2">
-                  npm run prisma:generate
-                </code>
-                <p className="text-gray-300 text-sm">{t.wallet.instructionStep4}</p>
-                <code className="text-yellow-400 text-xs block bg-black/50 p-2 rounded">
-                  npm run dev
-                </code>
-              </div>
-              <p className="text-gray-400 text-xs mt-3 border-t border-slate-600 pt-3">
-                {t.wallet.instructionReason}
-              </p>
-            </div>
-          )}
           <button
             onClick={loadWallet}
             disabled={loading}
@@ -253,6 +232,167 @@ export function Wallet({ showToast }: WalletProps) {
     );
   }
 
+  // Render top-up UI based on step
+  const renderTopUpUI = () => {
+    switch (topUpStep) {
+      case 'amount':
+        return (
+          <div className="bg-slate-700/50 border border-slate-600 rounded-xl p-4 mt-4">
+            <h4 className="text-white font-medium mb-4">Пополнение кошелька</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Сумма пополнения</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="Введите сумму"
+                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 pr-12"
+                    min="100"
+                    step="100"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">₸</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Минимальная сумма: 100 ₸</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreateRequest}
+                  disabled={isSubmitting || !amount || parseFloat(amount) < 100}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-lg hover:from-yellow-500 hover:to-amber-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      Подтвердить
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="px-4 py-3 bg-slate-700 text-gray-300 rounded-lg hover:bg-slate-600 transition-colors"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'qr':
+        return (
+          <div className="bg-slate-700/50 border border-slate-600 rounded-xl p-4 mt-4">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-white font-medium">Оплата через Kaspi</h4>
+              <button
+                onClick={handleCancel}
+                className="p-1 hover:bg-slate-600 rounded transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="text-center space-y-4">
+              <div className="bg-white p-4 rounded-xl inline-block mx-auto">
+                <img
+                  src="/kaspi-qr.png"
+                  alt="Kaspi QR код"
+                  className="w-48 h-48 sm:w-64 sm:h-64 object-contain"
+                />
+              </div>
+
+              <div className="text-lg font-semibold text-yellow-400">
+                Переведите {formatBalance(amount)} ₸
+              </div>
+
+              <p className="text-gray-400 text-sm">
+                Отсканируйте QR-код в приложении Kaspi или используйте ссылку ниже
+              </p>
+
+              {/* Mobile link button */}
+              <a
+                href={KASPI_PAYMENT_LINK}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <ExternalLink className="w-5 h-5" />
+                Оплатить по ссылке
+              </a>
+
+              <div className="border-t border-slate-600 pt-4 mt-4">
+                <button
+                  onClick={handleMarkAsPaid}
+                  disabled={isSubmitting}
+                  className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      Оплатил
+                    </>
+                  )}
+                </button>
+                <p className="text-xs text-gray-500 mt-2">
+                  Нажмите после оплаты для подтверждения администратором
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'waiting':
+        return (
+          <div className="bg-slate-700/50 border border-yellow-500/30 rounded-xl p-4 mt-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-yellow-500" />
+              </div>
+              <div>
+                <h4 className="text-white font-medium">Ожидание подтверждения</h4>
+                <p className="text-gray-400 text-sm">Сумма: {formatBalance(amount)} ₸</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-sm">
+                Ваш платёж находится на проверке. Администратор подтвердит
+                пополнение в течение нескольких минут.
+              </p>
+            </div>
+
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  checkActiveRequest();
+                  loadWallet();
+                }}
+                className="flex-1 px-4 py-2 bg-slate-700 text-gray-300 rounded-lg hover:bg-slate-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Проверить статус
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 bg-slate-700 text-gray-300 rounded-lg hover:bg-slate-600 transition-colors"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 sm:p-6 w-full max-w-full overflow-hidden">
       <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -266,7 +406,10 @@ export function Wallet({ showToast }: WalletProps) {
           </div>
         </div>
         <button
-          onClick={loadWallet}
+          onClick={() => {
+            loadWallet();
+            checkActiveRequest();
+          }}
           className="p-2 rounded-lg hover:bg-slate-700 transition-colors flex-shrink-0"
           title={t.wallet.refresh}
         >
@@ -284,100 +427,21 @@ export function Wallet({ showToast }: WalletProps) {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        {!showAddForm ? (
-          <button
-            onClick={() => {
-              setShowAddForm(true);
-              setAmount('');
-            }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium"
-          >
-            <Plus className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm sm:text-base">{t.wallet.addFunds}</span>
-          </button>
-        ) : (
-          <div className="w-full flex flex-col gap-3">
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder={t.wallet.amount}
-              className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 text-sm sm:text-base"
-              min="0"
-              step="0.01"
-            />
-            
-            {/* Выбор способа оплаты */}
-            <div className="space-y-2">
-              <label className="block text-sm text-gray-400 mb-2">{t.wallet.paymentMethod}</label>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('kaspi')}
-                  className={`flex-1 px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 text-sm sm:text-base ${
-                    paymentMethod === 'kaspi'
-                      ? 'border-yellow-400 bg-yellow-400/10 text-yellow-400'
-                      : 'border-slate-600 bg-slate-700 text-gray-300 hover:border-slate-500'
-                  }`}
-                >
-                  <Smartphone className="w-4 h-4 flex-shrink-0" />
-                  <span className="whitespace-nowrap">{t.wallet.kaspi}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('direct')}
-                  className={`flex-1 px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 text-sm sm:text-base ${
-                    paymentMethod === 'direct'
-                      ? 'border-green-400 bg-green-400/10 text-green-400'
-                      : 'border-slate-600 bg-slate-700 text-gray-300 hover:border-slate-500'
-                  }`}
-                >
-                  <WalletIcon className="w-4 h-4 flex-shrink-0" />
-                  <span className="whitespace-nowrap">{t.wallet.direct}</span>
-                </button>
-              </div>
-              {paymentMethod === 'kaspi' && (
-                <p className="text-xs text-gray-500">
-                  Безопасная оплата через Kaspi.kz. Вы будете перенаправлены на страницу оплаты.
-                </p>
-              )}
-              {paymentMethod === 'direct' && (
-                <p className="text-xs text-gray-500">
-                  Мгновенное пополнение баланса (для тестирования).
-                </p>
-              )}
-            </div>
-            
-            <div className="flex gap-2 w-full">
-              <button
-                onClick={handleAddFunds}
-                disabled={isAdding}
-                className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base min-w-0"
-              >
-                {isAdding ? (
-                  <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                ) : (
-                  <Plus className="w-4 h-4 flex-shrink-0" />
-                )}
-                <span className="whitespace-nowrap text-xs sm:text-sm">
-                  {paymentMethod === 'kaspi' ? t.wallet.payWithKaspi : t.wallet.add}
-                </span>
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddForm(false);
-                  setAmount('');
-                  setPaymentMethod('kaspi');
-                }}
-                className="flex-1 sm:flex-initial px-3 sm:px-4 py-2 sm:py-3 bg-slate-700 text-gray-300 rounded-lg hover:bg-slate-600 transition-colors text-sm sm:text-base whitespace-nowrap min-w-0"
-              >
-                {t.wallet.cancel}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Top-up button or flow */}
+      {topUpStep === 'idle' ? (
+        <button
+          onClick={() => {
+            setTopUpStep('amount');
+            setAmount('');
+          }}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium"
+        >
+          <Plus className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm sm:text-base">Пополнить</span>
+        </button>
+      ) : (
+        renderTopUpUI()
+      )}
 
       {/* История транзакций */}
       <div className="mt-6">
@@ -411,7 +475,7 @@ export function Wallet({ showToast }: WalletProps) {
               transactions.map((transaction) => {
                 const isPositive = transaction.type === 'deposit' || transaction.type === 'refund';
                 const isNegative = transaction.type === 'withdrawal' || transaction.type === 'subscription';
-                
+
                 return (
                   <div
                     key={transaction.id}
@@ -468,4 +532,3 @@ export function Wallet({ showToast }: WalletProps) {
     </div>
   );
 }
-
