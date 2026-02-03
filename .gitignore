@@ -53,3 +53,7 @@ messenger-service/*.log
 
 .vercel
 
+# Credentials
+credentinals.txt
+credentials.txt
+*.credentials
