@@ -1,28 +1,41 @@
 services:
-  # WAHA - WhatsApp HTTP API
-  # Бесплатная версия (community)
-  waha:
-    image: devlikeapro/waha:latest
-    platform: linux/amd64  # Эмуляция через Rosetta на Apple Silicon
-    container_name: diarai-waha
+  # Evolution API - WhatsApp Multi-Session
+  # Заменяет WAHA для поддержки множества сессий
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: diarai-evolution-api
     ports:
-      - "3001:3000"
+      - "3001:8080"
     environment:
-      # Webhook для входящих сообщений
-      - WHATSAPP_HOOK_URL=http://messenger-service:3000/webhook/whatsapp
-      - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status
-      # API ключ (опционально)
-      - WHATSAPP_API_KEY=${WAHA_API_KEY:-}
-      # Автозапуск сессий
-      - WHATSAPP_RESTART_ALL_SESSIONS=true
+      # API аутентификация
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-change-me}
+      # Глобальный webhook для всех instances
+      - WEBHOOK_GLOBAL_URL=${MESSENGER_SERVICE_URL:-http://messenger-service:3000}/webhook/whatsapp
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      # События webhook
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+      - WEBHOOK_EVENTS_QRCODE_UPDATED=true
+      - WEBHOOK_EVENTS_SEND_MESSAGE=true
+      # База данных (отключена, используем файловое хранилище)
+      - DATABASE_ENABLED=false
+      # Логирование
+      - LOG_LEVEL=ERROR
+      - LOG_COLOR=true
+      # Настройки instance
+      - DEL_INSTANCE=false
+      - CONFIG_SESSION_PHONE_CLIENT=DIAR AI
     volumes:
-      - waha_data:/app/.waha
-      - waha_sessions:/app/.sessions
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
     restart: unless-stopped
     networks:
       - messenger-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -56,17 +69,26 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - WAHA_URL=http://waha:3000
+      # Evolution API (вместо WAHA)
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-change-me}
+      # Legacy: для обратной совместимости
+      - WAHA_URL=http://evolution-api:8080
+      # Redis
       - REDIS_URL=redis://redis:6379
+      # Backend DIAR
       - DIAR_BACKEND_URL=${DIAR_BACKEND_URL}
       - DIAR_API_KEY=${DIAR_API_KEY}
+      # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # Instagram
       - INSTAGRAM_ACCESS_TOKEN=${INSTAGRAM_ACCESS_TOKEN}
       - INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
       - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN}
+      # AI
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      waha:
+      evolution-api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -75,8 +97,8 @@ services:
       - messenger-network
 
 volumes:
-  waha_data:
-  waha_sessions:
+  evolution_instances:
+  evolution_store:
   redis_data:
 
 networks:

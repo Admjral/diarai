@@ -5,6 +5,12 @@ import { getWhatsAppService } from '../channels/whatsapp/whatsapp.service.js';
 import { getInstagramService } from '../channels/instagram/instagram.service.js';
 import { getMessageService } from '../services/message.service.js';
 import { getSessionService } from '../services/session.service.js';
+import {
+  EvolutionWebhookPayload,
+  EvolutionMessage,
+  EvolutionConnectionUpdate,
+  EvolutionQRCodeUpdate,
+} from '../types/index.js';
 
 const router = Router();
 
@@ -27,74 +33,164 @@ function isDuplicate(messageId: string): boolean {
 
 /**
  * POST /webhook/whatsapp
- * Webhook от WAHA для входящих WhatsApp сообщений
+ * Webhook от Evolution API для входящих WhatsApp событий
+ *
+ * События:
+ * - MESSAGES_UPSERT: новое входящее сообщение
+ * - MESSAGES_UPDATE: обновление статуса сообщения
+ * - CONNECTION_UPDATE: изменение статуса подключения
+ * - QRCODE_UPDATED: обновление QR кода
+ * - SEND_MESSAGE: подтверждение отправки
  */
 router.post('/whatsapp', webhookLimiter, async (req: Request, res: Response) => {
   try {
-    const payload = req.body;
+    const payload = req.body as EvolutionWebhookPayload;
 
-    log.debug('WhatsApp webhook received', {
+    log.debug('WhatsApp webhook received (Evolution)', {
       event: payload.event,
-      session: payload.session,
+      instance: payload.instance,
     });
 
     // Сразу отвечаем 200 чтобы не было retry
     res.status(200).json({ success: true });
 
-    // Обрабатываем асинхронно
-    if (payload.event === 'message' && payload.payload) {
-      // Дедупликация: пропускаем повторные webhook'и для того же сообщения
-      const messageId = payload.payload.id || payload.payload._data?.id?._serialized;
-      if (messageId && isDuplicate(messageId)) {
-        log.debug('Duplicate webhook skipped', { messageId });
-        return;
-      }
-
-      const whatsapp = getWhatsAppService();
-      const messageService = getMessageService();
-      const sessionService = getSessionService();
-
-      // Получаем sessionId из payload
-      const sessionId = payload.session || payload.payload?.session;
-
-      if (!sessionId) {
-        log.warn('WhatsApp webhook without sessionId', { event: payload.event });
-        return;
-      }
-
-      // Получаем данные пользователя по sessionId
-      const sessionData = await sessionService.getUserByWhatsAppSession(sessionId);
-
-      if (!sessionData) {
-        log.warn('Unknown WhatsApp session, skipping message', { sessionId });
-        return;
-      }
-
-      // Пропускаем статусы (WhatsApp Stories) — это не реальные сообщения
-      const from = payload.payload.from || '';
-      if (from.includes('status@broadcast')) {
-        return;
-      }
-
-      const unifiedMessage = whatsapp.parseWebhookMessage(payload.payload, sessionData.userId);
-
-      // Пропускаем исходящие сообщения
-      if (unifiedMessage.direction === 'outbound') {
-        return;
-      }
-
-      await messageService.processIncomingMessage({
-        message: unifiedMessage,
-        aiEnabled: sessionData.aiEnabled,
-        aiSystemPrompt: sessionData.aiSystemPrompt,
-        escalationKeywords: sessionData.escalationKeywords,
-      });
+    // Обрабатываем асинхронно в зависимости от типа события
+    switch (payload.event) {
+      case 'MESSAGES_UPSERT':
+        await handleMessagesUpsert(payload);
+        break;
+      case 'MESSAGES_UPDATE':
+        await handleMessagesUpdate(payload);
+        break;
+      case 'CONNECTION_UPDATE':
+        await handleConnectionUpdate(payload);
+        break;
+      case 'QRCODE_UPDATED':
+        await handleQRCodeUpdate(payload);
+        break;
+      case 'SEND_MESSAGE':
+        // Подтверждение отправки - можно использовать для обновления статуса
+        log.debug('Send message confirmed', {
+          instance: payload.instance,
+        });
+        break;
+      default:
+        log.debug('Unhandled webhook event', { event: payload.event });
     }
   } catch (error) {
     log.error('WhatsApp webhook error', error);
     // Не возвращаем ошибку - уже отправили 200
   }
 });
+
+/**
+ * Обработка входящих сообщений (MESSAGES_UPSERT)
+ */
+async function handleMessagesUpsert(payload: EvolutionWebhookPayload): Promise<void> {
+  const whatsapp = getWhatsAppService();
+  const messageService = getMessageService();
+  const sessionService = getSessionService();
+
+  const instanceName = payload.instance;
+  const messageData = payload.data as EvolutionMessage;
+
+  // Проверяем наличие данных сообщения
+  if (!messageData?.key?.remoteJid) {
+    log.debug('No message data in MESSAGES_UPSERT', { instance: instanceName });
+    return;
+  }
+
+  // Пропускаем статусы (WhatsApp Stories)
+  if (messageData.key.remoteJid.includes('status@broadcast')) {
+    return;
+  }
+
+  // Пропускаем групповые сообщения (опционально)
+  if (messageData.key.remoteJid.includes('@g.us')) {
+    log.debug('Skipping group message', { remoteJid: messageData.key.remoteJid });
+    return;
+  }
+
+  // Дедупликация
+  const messageId = messageData.key.id;
+  if (messageId && isDuplicate(messageId)) {
+    log.debug('Duplicate webhook skipped', { messageId });
+    return;
+  }
+
+  // Получаем данные пользователя по instance name (sessionId)
+  const sessionData = await sessionService.getUserByWhatsAppSession(instanceName);
+
+  if (!sessionData) {
+    log.warn('Unknown WhatsApp instance, skipping message', { instanceName });
+    return;
+  }
+
+  const unifiedMessage = whatsapp.parseWebhookMessage(
+    messageData,
+    instanceName,
+    sessionData.userId
+  );
+
+  // Пропускаем исходящие сообщения
+  if (unifiedMessage.direction === 'outbound') {
+    return;
+  }
+
+  await messageService.processIncomingMessage({
+    message: unifiedMessage,
+    aiEnabled: sessionData.aiEnabled,
+    aiSystemPrompt: sessionData.aiSystemPrompt,
+    escalationKeywords: sessionData.escalationKeywords,
+  });
+}
+
+/**
+ * Обработка обновления статуса сообщения (MESSAGES_UPDATE)
+ */
+async function handleMessagesUpdate(payload: EvolutionWebhookPayload): Promise<void> {
+  const data = payload.data as EvolutionMessage;
+
+  log.debug('Message status update', {
+    instance: payload.instance,
+    messageId: data?.key?.id,
+    status: data?.status,
+  });
+
+  // Можно обновить статус сообщения в базе данных
+  // TODO: Реализовать если нужно отслеживать delivered/read статусы
+}
+
+/**
+ * Обработка изменения статуса подключения (CONNECTION_UPDATE)
+ */
+async function handleConnectionUpdate(payload: EvolutionWebhookPayload): Promise<void> {
+  const data = payload.data as EvolutionConnectionUpdate;
+
+  log.info('Connection status update', {
+    instance: payload.instance,
+    state: data?.state,
+    statusReason: data?.statusReason,
+  });
+
+  // Можно уведомить frontend через WebSocket или обновить статус в БД
+  // TODO: Реализовать real-time уведомления для frontend
+}
+
+/**
+ * Обработка обновления QR кода (QRCODE_UPDATED)
+ */
+async function handleQRCodeUpdate(payload: EvolutionWebhookPayload): Promise<void> {
+  const data = payload.data as EvolutionQRCodeUpdate;
+
+  log.info('QR code updated', {
+    instance: payload.instance,
+    count: data?.qrcode?.count,
+  });
+
+  // Можно отправить новый QR код на frontend через WebSocket
+  // TODO: Реализовать push QR кода на frontend
+}
 
 /**
  * GET /webhook/instagram
