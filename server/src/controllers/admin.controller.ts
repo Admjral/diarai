@@ -150,6 +150,7 @@ export async function getAllCampaigns(req: Request, res: Response) {
           spent: `₸${Number(campaign.spent).toLocaleString()}`,
           conversions: campaign.conversions,
           imageUrl: campaign.imageUrl || null,
+          phone: campaign.phone || null,
           audience: parsedAudience,
           user: user || null,
         };

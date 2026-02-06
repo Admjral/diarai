@@ -550,6 +550,7 @@ export interface CampaignWithUser {
   spent: string;
   conversions: number;
   imageUrl: string | null;
+  phone: string | null;
   audience: any;
   user: {
     email: string;

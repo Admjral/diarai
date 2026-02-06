@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Paperclip,
   Mic,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -295,6 +296,29 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
       showToast('Разговор закрыт', 'success');
     } catch (error) {
       showToast('Ошибка закрытия', 'error');
+    }
+  };
+
+  // Create lead from conversation
+  const handleCreateLead = async (conversation: MessengerConversation) => {
+    try {
+      const result = await messengerAPI.createLeadFromConversation(conversation.id);
+      if (result.success) {
+        // Update conversation to show it has a lead
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversation.id ? { ...c, leadId: result.lead?.id } : c))
+        );
+        if (selectedConversation?.id === conversation.id) {
+          setSelectedConversation({ ...selectedConversation, leadId: result.lead?.id });
+        }
+        showToast('Лид добавлен в CRM', 'success');
+      }
+    } catch (error: any) {
+      if (error?.message?.includes('уже существует') || error?.message?.includes('already exists')) {
+        showToast('Лид уже добавлен в CRM', 'info');
+      } else {
+        showToast('Ошибка добавления в CRM', 'error');
+      }
     }
   };
 
@@ -675,9 +699,16 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
 
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-white text-[14px] truncate">
-                                  {conv.contactName}
-                                </span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="font-medium text-white text-[14px] truncate">
+                                    {conv.contactName}
+                                  </span>
+                                  {conv.leadId && (
+                                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-medium rounded flex-shrink-0">
+                                      CRM
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                   {conv.lastMessageAt && (
                                     <span className={`text-[11px] ${conv.unreadCount > 0 ? 'text-amber-400 font-medium' : 'text-gray-500'}`}>
@@ -752,6 +783,18 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-[#1e2030] border-white/10 rounded-xl shadow-xl">
+                      <DropdownMenuItem
+                        onClick={() => handleCreateLead(selectedConversation)}
+                        className={`rounded-lg ${
+                          selectedConversation.leadId
+                            ? 'text-green-400 focus:text-green-300 focus:bg-green-500/10'
+                            : 'text-gray-300 focus:text-white focus:bg-white/5'
+                        }`}
+                        disabled={!!selectedConversation.leadId}
+                      >
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        {selectedConversation.leadId ? 'Уже в CRM' : 'Добавить в CRM'}
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleArchive(selectedConversation.id)} className="text-gray-300 focus:text-white focus:bg-white/5 rounded-lg">
                         <Archive className="w-4 h-4 mr-2" />
                         Архивировать

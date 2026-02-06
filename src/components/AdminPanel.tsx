@@ -34,7 +34,12 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const [userSearch, setUserSearch] = useState('');
   const [userPlanFilter, setUserPlanFilter] = useState<'all' | 'Start' | 'Pro' | 'Business'>('all');
   const [campaignSearch, setCampaignSearch] = useState('');
-  
+
+  // Пагинация
+  const [usersPage, setUsersPage] = useState(1);
+  const [campaignsPage, setCampaignsPage] = useState(1);
+  const ITEMS_PER_PAGE = 25;
+
   // Модальное окно для операций с кошельком
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<WalletWithUser | null>(null);
@@ -509,9 +514,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   }, [selectedCampaignForStats, statsForm, loadCampaigns, loadStats, showToast]);
 
   // Фильтрация пользователей
-  const filteredUsers = useMemo(() => {
+  const allFilteredUsers = useMemo(() => {
     return users.filter(user => {
-      const matchesSearch = 
+      const matchesSearch =
         user.email.toLowerCase().includes(userSearch.toLowerCase()) ||
         user.name.toLowerCase().includes(userSearch.toLowerCase());
       const matchesPlan = userPlanFilter === 'all' || user.plan === userPlanFilter;
@@ -519,8 +524,20 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
     });
   }, [users, userSearch, userPlanFilter]);
 
+  // Пагинация пользователей
+  const usersTotalPages = Math.ceil(allFilteredUsers.length / ITEMS_PER_PAGE);
+  const filteredUsers = useMemo(() => {
+    const startIndex = (usersPage - 1) * ITEMS_PER_PAGE;
+    return allFilteredUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [allFilteredUsers, usersPage]);
+
+  // Сброс страницы при изменении фильтров
+  useEffect(() => {
+    setUsersPage(1);
+  }, [userSearch, userPlanFilter]);
+
   // Фильтрация кампаний
-  const filteredCampaigns = useMemo(() => {
+  const allFilteredCampaigns = useMemo(() => {
     return campaigns.filter(campaign => {
       const matchesName = campaign.name.toLowerCase().includes(campaignSearch.toLowerCase());
       const matchesUser = campaign.user?.email.toLowerCase().includes(campaignSearch.toLowerCase()) ||
@@ -528,6 +545,18 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       return matchesName || matchesUser;
     });
   }, [campaigns, campaignSearch]);
+
+  // Пагинация кампаний
+  const campaignsTotalPages = Math.ceil(allFilteredCampaigns.length / ITEMS_PER_PAGE);
+  const filteredCampaigns = useMemo(() => {
+    const startIndex = (campaignsPage - 1) * ITEMS_PER_PAGE;
+    return allFilteredCampaigns.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [allFilteredCampaigns, campaignsPage]);
+
+  // Сброс страницы при изменении поиска кампаний
+  useEffect(() => {
+    setCampaignsPage(1);
+  }, [campaignSearch]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-black">
@@ -821,6 +850,34 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination for users */}
+                {usersTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 bg-slate-800/30 rounded-lg">
+                    <span className="text-sm text-gray-400">
+                      Показано {(usersPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(usersPage * ITEMS_PER_PAGE, allFilteredUsers.length)} из {allFilteredUsers.length}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setUsersPage(p => Math.max(1, p - 1))}
+                        disabled={usersPage === 1}
+                        className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                      >
+                        Назад
+                      </button>
+                      <span className="text-sm text-gray-300 px-2">
+                        {usersPage} / {usersTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setUsersPage(p => Math.min(usersTotalPages, p + 1))}
+                        disabled={usersPage === usersTotalPages}
+                        className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                      >
+                        Вперёд
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -848,11 +905,12 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                 </div>
 
                 <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-x-auto">
-                  <table className="w-full min-w-[800px]">
+                  <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="border-b border-slate-700">
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Название</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Пользователь</th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Телефон</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Платформы</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Статус</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Бюджет</th>
@@ -876,6 +934,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-white text-xs sm:text-sm break-words">{campaign.name}</td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
                             {campaign.user ? `${campaign.user.name} (${campaign.user.email})` : 'N/A'}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
+                            {campaign.phone || <span className="text-gray-500">—</span>}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
                             {campaign.platforms.join(', ')}
@@ -932,6 +993,34 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination for campaigns */}
+                {campaignsTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 bg-slate-800/30 rounded-lg">
+                    <span className="text-sm text-gray-400">
+                      Показано {(campaignsPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(campaignsPage * ITEMS_PER_PAGE, allFilteredCampaigns.length)} из {allFilteredCampaigns.length}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCampaignsPage(p => Math.max(1, p - 1))}
+                        disabled={campaignsPage === 1}
+                        className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                      >
+                        Назад
+                      </button>
+                      <span className="text-sm text-gray-300 px-2">
+                        {campaignsPage} / {campaignsTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setCampaignsPage(p => Math.min(campaignsTotalPages, p + 1))}
+                        disabled={campaignsPage === campaignsTotalPages}
+                        className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                      >
+                        Вперёд
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

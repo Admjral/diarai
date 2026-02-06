@@ -47,7 +47,7 @@ export class CampaignsController {
           spent: `₸${Number(campaign.spent).toLocaleString()}`,
           conversions: campaign.conversions,
           imageUrl: campaign.imageUrl || null,
-          phone: null, // Можно добавить в схему позже
+          phone: campaign.phone || null,
           location: null, // Можно добавить в схему позже
           audience: parsedAudience,
         };
@@ -192,6 +192,11 @@ export class CampaignsController {
         campaignData.imageUrl = imageUrl;
       }
 
+      // Добавляем phone если он есть
+      if (phone) {
+        campaignData.phone = phone.trim();
+      }
+
       // Сохраняем audience как JSON, если он передан
       if (audience) {
         campaignData.audience = audience;
@@ -220,7 +225,7 @@ export class CampaignsController {
       res.status(201).json({
         ...campaign,
         platforms: platforms,
-        phone: phone || null,
+        phone: campaign.phone || null,
         location: location || null,
         audience: parsedAudience,
         imageUrl: campaign.imageUrl || null,
@@ -308,6 +313,7 @@ export class CampaignsController {
         ...(spentNum !== undefined && { spent: spentNum }),
         ...(conversions !== undefined && { conversions }),
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
+        ...(phone !== undefined && { phone: phone?.trim() || null }),
       };
 
       // Сохраняем audience как JSON, если он передан
@@ -332,7 +338,7 @@ export class CampaignsController {
         budget: `₸${Number(updatedCampaign.budget).toLocaleString()}`,
         spent: `₸${Number(updatedCampaign.spent).toLocaleString()}`,
         imageUrl: updatedCampaign.imageUrl || null,
-        phone: phone || null,
+        phone: updatedCampaign.phone || null,
         location: location || null,
         audience: parsedAudience,
       });
