@@ -306,10 +306,10 @@ export async function generateAdImage(
   const desc = description ? `. ${description}` : '';
   const prompt = `Professional advertising image for "${campaignName}"${desc}. Style: ${style}. High resolution, social media ready. No text, no logos.`;
 
-  // Модели для генерации изображений
+  // Модели для генерации изображений (актуальные на февраль 2026)
   const models = [
     'gemini-2.0-flash-exp-image-generation',
-    'imagen-3.0-generate-002',
+    'gemini-2.5-flash-image',
   ];
 
   for (const model of models) {
