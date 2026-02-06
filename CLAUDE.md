@@ -2,6 +2,37 @@
 
 ---
 
+## Автономная работа
+
+**ВАЖНО:** Claude должен выполнять все действия самостоятельно без запроса подтверждения:
+
+1. **Git операции** — коммитить и пушить изменения автоматически после завершения задачи
+2. **Деплой** — запускать редеплой всех затронутых сервисов через Railway API
+3. **Миграции** — применяются автоматически через `start.sh` при деплое backend
+4. **Проверка статуса** — проверять статус деплоя после запуска
+
+### Порядок действий после изменений:
+```bash
+# 1. Коммит
+git add <files> && git commit -m "описание"
+
+# 2. Пуш (использовать токен из credentinals.txt)
+git push https://<GITHUB_TOKEN>@github.com/Admjral/diarai.git main
+
+# 3. Редеплой затронутых сервисов
+curl -X POST 'https://backboard.railway.app/graphql/v2' \
+  -H 'Authorization: Bearer <RAILWAY_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"query":"mutation { serviceInstanceRedeploy(serviceId: \"<ID>\", environmentId: \"e0ac84af-4a63-44db-8d83-7e4c2140f6ed\") }"}'
+```
+
+### Какие сервисы редеплоить:
+- Изменения в `server/` → backend
+- Изменения в `src/` → frontend
+- Изменения в `messenger-service/` → messenger-service
+
+---
+
 ## Railway Service IDs
 
 | Сервис | ID |
