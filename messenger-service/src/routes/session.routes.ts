@@ -67,17 +67,27 @@ router.get('/whatsapp/:sessionId/qr', async (req: Request, res: Response) => {
 /**
  * GET /session/whatsapp/:sessionId/status
  * Получить статус WhatsApp сессии
+ * Возвращает WAHA-совместимые статусы для frontend
  */
 router.get('/whatsapp/:sessionId/status', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
 
     const whatsapp = getWhatsAppService();
-    const status = await whatsapp.getSessionStatus(sessionId);
+    const instance = await whatsapp.getSessionStatus(sessionId);
+
+    // Маппим Evolution статус в WAHA-совместимый формат
+    const wahaStatus = whatsapp.mapConnectionStatus(instance.status);
+    const isConnected = whatsapp.isConnected(instance.status);
 
     res.json({
       success: true,
-      data: status,
+      data: {
+        ...instance,
+        status: wahaStatus, // WORKING, STOPPED, SCAN_QR_CODE, etc.
+        evolutionStatus: instance.status, // Оригинальный статус Evolution API
+        isConnected,
+      },
     });
   } catch (error) {
     log.error('Get session status error', error);
