@@ -351,7 +351,7 @@ async function tryGenerateImage(apiKey: string, model: string, prompt: string): 
       return null;
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
 
     // Ищем изображение в ответе
     for (const candidate of data.candidates || []) {
