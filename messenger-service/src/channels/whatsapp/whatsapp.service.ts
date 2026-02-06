@@ -157,7 +157,7 @@ export class WhatsAppService {
       if (error?.response?.status === 404) {
         return {
           instanceName,
-          status: 'close' as EvolutionConnectionState,
+          status: 'not_found' as EvolutionConnectionState,
           serverUrl: this.evolutionUrl,
         };
       }
@@ -385,6 +385,8 @@ export class WhatsAppService {
         return 'SCAN_QR_CODE';
       case 'close':
         return 'STOPPED';
+      case 'not_found':
+        return 'NO_SESSION';
       default:
         return 'UNKNOWN';
     }

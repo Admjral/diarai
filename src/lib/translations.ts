@@ -855,7 +855,13 @@ export const translations = {
         qrError: 'Ошибка получения QR-кода',
         connected: 'WhatsApp подключен!',
         waitingConnection: 'Ожидание подключения...',
-        refreshQR: 'Обновить QR-код'
+        refreshQR: 'Обновить QR-код',
+        sessionActive: 'Сессия активна и получает сообщения',
+        sessionDisconnected: 'Сессия отключена',
+        sessionExpired: 'WhatsApp был отключен или сессия истекла',
+        reconnect: 'Переподключить WhatsApp',
+        reconnecting: 'Переподключение...',
+        reconnectError: 'Ошибка переподключения'
       },
       // Telegram Setup
       telegramSetup: {
@@ -1709,7 +1715,13 @@ export const translations = {
         qrError: 'QR-кодты алу қатесі',
         connected: 'WhatsApp қосылды!',
         waitingConnection: 'Қосылу күтілуде...',
-        refreshQR: 'QR-кодты жаңарту'
+        refreshQR: 'QR-кодты жаңарту',
+        sessionActive: 'Сессия белсенді және хабарламаларды қабылдайды',
+        sessionDisconnected: 'Сессия ажыратылды',
+        sessionExpired: 'WhatsApp ажыратылды немесе сессия мерзімі өтті',
+        reconnect: 'WhatsApp қайта қосу',
+        reconnecting: 'Қайта қосылуда...',
+        reconnectError: 'Қайта қосу қатесі'
       },
       // Telegram Setup
       telegramSetup: {
@@ -2560,7 +2572,13 @@ export const translations = {
         qrError: 'Error getting QR code',
         connected: 'WhatsApp connected!',
         waitingConnection: 'Waiting for connection...',
-        refreshQR: 'Refresh QR code'
+        refreshQR: 'Refresh QR code',
+        sessionActive: 'Session is active and receiving messages',
+        sessionDisconnected: 'Session disconnected',
+        sessionExpired: 'WhatsApp was disconnected or session expired',
+        reconnect: 'Reconnect WhatsApp',
+        reconnecting: 'Reconnecting...',
+        reconnectError: 'Reconnection error'
       },
       // Telegram Setup
       telegramSetup: {

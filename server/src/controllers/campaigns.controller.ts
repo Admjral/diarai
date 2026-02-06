@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma';
 import { getUserIdByEmail } from '../utils/userHelper';
 import { getStorageService } from '../services/storage.service';
 import { log } from '../utils/logger';
+import { getBudgetRecommendations, calculateDailyBudget } from '../services/budget.service';
 
 export class CampaignsController {
   // Получить все кампании
@@ -151,6 +152,7 @@ export class CampaignsController {
         location,
         audience,
         imageUrl,
+        budgetPeriodDays = 7,
       } = req.body;
 
       if (!name || !platforms || !Array.isArray(platforms) || platforms.length === 0) {
@@ -159,61 +161,119 @@ export class CampaignsController {
 
       // Получаем userId из базы данных по email
       const userEmail = req.user?.email;
-      
+
       if (!userEmail) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
       const userId = await getUserIdByEmail(userEmail);
-      
+
       // Преобразуем budget и spent из строки в число (убираем ₸ и запятые)
-      const budgetNum = typeof budget === 'string' 
-        ? parseFloat(budget.replace(/[^\d.]/g, '')) 
+      const budgetNum = typeof budget === 'string'
+        ? parseFloat(budget.replace(/[^\d.]/g, ''))
         : budget;
-      const spentNum = typeof spent === 'string' 
+      const spentNum = typeof spent === 'string'
         ? parseFloat(spent.replace(/[^\d.]/g, '')) || 0
         : (spent || 0);
 
+      if (!budgetNum || budgetNum < 1000) {
+        return res.status(400).json({ error: 'Минимальный бюджет: 1000₸' });
+      }
+
+      // Проверяем баланс кошелька
+      const wallet = await prisma.wallet.findUnique({
+        where: { userId },
+      });
+
+      if (!wallet) {
+        return res.status(400).json({
+          error: 'Кошелёк не найден. Пополните баланс для создания кампании.',
+          code: 'WALLET_NOT_FOUND'
+        });
+      }
+
+      const walletBalance = Number(wallet.balance);
+      if (budgetNum > walletBalance) {
+        return res.status(400).json({
+          error: `Недостаточно средств. Доступно: ${walletBalance.toLocaleString()}₸, требуется: ${budgetNum.toLocaleString()}₸`,
+          code: 'INSUFFICIENT_FUNDS',
+          availableBalance: walletBalance,
+          requestedBudget: budgetNum,
+        });
+      }
+
+      // Рассчитываем дневной бюджет
+      const periodDays = budgetPeriodDays || 7;
+      const dailyBudget = calculateDailyBudget(budgetNum, periodDays);
+
+      // Получаем рекомендации по бюджету
+      const recommendations = getBudgetRecommendations(platforms, budgetNum, periodDays);
+
       // Сохраняем platforms как JSON строку (первая платформа для обратной совместимости)
       const platformString = platforms.join(', ');
-      
-      const campaignData: any = {
-        userId,
-        name,
-        platform: platformString, // Для обратной совместимости
-        status: status || 'На проверке',
-        budget: budgetNum,
-        spent: spentNum,
-        conversions: conversions || 0,
-      };
 
-      // Добавляем imageUrl только если он есть
-      if (imageUrl) {
-        campaignData.imageUrl = imageUrl;
-      }
+      // Атомарная транзакция: списание с кошелька + создание кампании
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Списываем с кошелька
+        const updatedWallet = await tx.wallet.update({
+          where: { userId },
+          data: { balance: { decrement: budgetNum } },
+        });
 
-      // Добавляем phone если он есть
-      if (phone) {
-        campaignData.phone = phone.trim();
-      }
+        // 2. Создаём транзакцию в истории
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            userId,
+            walletId: wallet.id,
+            type: 'campaign_budget',
+            amount: budgetNum,
+            balanceBefore: wallet.balance,
+            balanceAfter: updatedWallet.balance,
+            description: `Бюджет кампании: ${name}`,
+          },
+        });
 
-      // Сохраняем audience как JSON, если он передан
-      if (audience) {
-        campaignData.audience = audience;
-      }
+        // 3. Создаём кампанию
+        const campaignData: any = {
+          userId,
+          name,
+          platform: platformString,
+          status: status || 'На проверке',
+          budget: budgetNum,
+          spent: spentNum,
+          conversions: conversions || 0,
+          budgetPeriodDays: periodDays,
+          dailyBudget: dailyBudget,
+          walletTransactionId: transaction.id,
+        };
 
-      const campaign = await prisma.campaign.create({
-        data: campaignData,
+        if (imageUrl) {
+          campaignData.imageUrl = imageUrl;
+        }
+
+        if (phone) {
+          campaignData.phone = phone.trim();
+        }
+
+        if (audience) {
+          campaignData.audience = audience;
+        }
+
+        const campaign = await tx.campaign.create({
+          data: campaignData,
+        });
+
+        return { campaign, wallet: updatedWallet, transaction };
       });
 
       // Парсим audience из JSON, если он есть
       let parsedAudience = null;
-      if (campaign.audience) {
+      if (result.campaign.audience) {
         try {
-          if (typeof campaign.audience === 'string') {
-            parsedAudience = JSON.parse(campaign.audience);
-          } else if (typeof campaign.audience === 'object') {
-            parsedAudience = campaign.audience;
+          if (typeof result.campaign.audience === 'string') {
+            parsedAudience = JSON.parse(result.campaign.audience);
+          } else if (typeof result.campaign.audience === 'object') {
+            parsedAudience = result.campaign.audience;
           }
         } catch (error) {
           console.error('Ошибка парсинга audience при создании кампании:', error);
@@ -221,16 +281,28 @@ export class CampaignsController {
         }
       }
 
+      log.info('Кампания создана с бюджетом', {
+        campaignId: result.campaign.id,
+        budget: budgetNum,
+        periodDays,
+        dailyBudget,
+        newWalletBalance: Number(result.wallet.balance),
+      });
+
       // Возвращаем с преобразованными данными
       res.status(201).json({
-        ...campaign,
+        ...result.campaign,
         platforms: platforms,
-        phone: campaign.phone || null,
+        phone: result.campaign.phone || null,
         location: location || null,
         audience: parsedAudience,
-        imageUrl: campaign.imageUrl || null,
+        imageUrl: result.campaign.imageUrl || null,
         budget: `₸${budgetNum.toLocaleString()}`,
         spent: `₸${spentNum.toLocaleString()}`,
+        dailyBudget: `₸${dailyBudget.toLocaleString()}`,
+        budgetPeriodDays: periodDays,
+        walletBalance: Number(result.wallet.balance),
+        budgetRecommendations: recommendations.warnings,
       });
     } catch (error: any) {
       console.error('Ошибка при создании кампании:', error);
@@ -240,7 +312,7 @@ export class CampaignsController {
         meta: error?.meta,
         stack: error?.stack,
       });
-      
+
       // Более детальное сообщение об ошибке
       let errorMessage = 'Ошибка сервера';
       if (error?.code === 'P2002') {
@@ -250,8 +322,8 @@ export class CampaignsController {
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
-      res.status(500).json({ 
+
+      res.status(500).json({
         error: errorMessage,
         details: process.env.NODE_ENV === 'development' ? error?.message : undefined
       });

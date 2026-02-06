@@ -184,6 +184,13 @@ export const createCampaignSchema = z.object({
     .optional()
     .nullable()
     .transform((val) => val && val.trim() !== '' ? val.trim() : null),
+  budgetPeriodDays: z
+    .number()
+    .int()
+    .min(1, 'Период должен быть минимум 1 день')
+    .max(365, 'Период не может превышать 365 дней')
+    .optional()
+    .default(7),
   audience: z
     .object({
       interests: z.array(z.string()).optional(),

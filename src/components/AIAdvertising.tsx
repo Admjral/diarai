@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { ArrowLeft, Target, TrendingUp, DollarSign, Eye, MousePointer, Sparkles, X, Plus, Phone, MapPin, BarChart3, Play, Pause, MoreVertical, Loader2, Search, Filter, ArrowUpDown, MessageSquare, Menu } from 'lucide-react';
 import type { Screen } from '../types';
-import { campaignsAPI, aiAPI, APIError, AIAudienceResponse } from '../lib/api';
+import { campaignsAPI, aiAPI, walletAPI, APIError, AIAudienceResponse } from '../lib/api';
 import { getCache, setCache, clearCache, cacheKeys } from '../lib/cache';
 import { CampaignListSkeleton } from './SkeletonLoaders';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -407,6 +407,39 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [itemsPerPage] = useState(5);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Состояния для бюджета и кошелька
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [budgetPeriod, setBudgetPeriod] = useState<'week' | 'month' | 'custom'>('week');
+  const [periodDays, setPeriodDays] = useState<number>(7);
+  const [budgetWarnings, setBudgetWarnings] = useState<string[]>([]);
+
+  // Минимальные недельные бюджеты по платформам (для рекомендаций)
+  const PLATFORM_MIN_WEEKLY: Record<string, number> = {
+    'Instagram': 5000,
+    'Facebook': 5000,
+    'Google Ads': 10000,
+    'TikTok': 7000,
+    'YouTube': 15000,
+  };
+
+  // Функция для получения рекомендаций по бюджету
+  const getBudgetWarnings = (platforms: string[], budget: number, days: number): string[] => {
+    const warnings: string[] = [];
+    for (const platform of platforms) {
+      const minWeekly = PLATFORM_MIN_WEEKLY[platform];
+      if (minWeekly) {
+        const minForPeriod = Math.round((minWeekly / 7) * days);
+        if (budget < minForPeriod) {
+          warnings.push(
+            `${platform}: рекомендуем минимум ${minForPeriod.toLocaleString()}₸ на ${days} дней`
+          );
+        }
+      }
+    }
+    return warnings;
+  };
+
   // Определяем функции загрузки ДО их использования в useEffect
   const loadCampaignsFromAPI = async () => {
     const data = await campaignsAPI.getAll();
@@ -499,6 +532,28 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   useEffect(() => {
     loadCampaigns();
   }, []);
+
+  // Загрузка баланса кошелька при открытии модального окна создания
+  useEffect(() => {
+    if (showCreateModal) {
+      setWalletLoading(true);
+      walletAPI.getWallet()
+        .then((wallet) => {
+          setWalletBalance(parseFloat(wallet.balance) || 0);
+        })
+        .catch((error) => {
+          console.error('Ошибка загрузки баланса:', error);
+          setWalletBalance(0);
+        })
+        .finally(() => {
+          setWalletLoading(false);
+        });
+      // Сброс состояний периода при открытии
+      setBudgetPeriod('week');
+      setPeriodDays(7);
+      setBudgetWarnings([]);
+    }
+  }, [showCreateModal]);
 
   // Синхронизация generatedAdText с selectedAudience?.adText
   useEffect(() => {
@@ -1104,6 +1159,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         platforms: data.platforms,
         status: t.aiAdvertising.status.onReview,
         budget: budgetValue,
+        budgetPeriodDays: periodDays, // Период бюджета в днях
         spent: 0, // Отправляем как число, а не строку
         conversions: 0,
         ...(phoneValue && { phone: phoneValue }),
@@ -2359,35 +2415,153 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                 <p className="text-gray-500 text-xs mt-1">Укажите города или регионы, где должна показываться реклама</p>
               </div>
 
-              <div>
-                <label className="text-gray-400 mb-2 block">Бюджет (₸) <span className="text-red-400">*</span></label>
-                <input
-                  type="number"
-                  {...createForm.register('budget', {
-                    required: t.aiAdvertising.validation.budgetRequired,
-                    validate: (value) => {
-                      const num = parseFloat(value.replace(/[^\d.]/g, ''));
-                      if (isNaN(num) || num <= 0) {
-                        return t.aiAdvertising.validation.budgetPositive;
-                      }
-                      if (num < 1000) {
-                        return t.aiAdvertising.validation.budgetMinValue;
-                      }
-                      return true;
-                    },
-                  })}
-                  placeholder="50000"
-                  min="1000"
-                  className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
-                    createForm.formState.errors.budget
-                      ? 'border-red-500 focus:border-red-500'
-                      : 'border-slate-700 focus:border-yellow-500/50'
-                  }`}
-                />
-                {createForm.formState.errors.budget && (
-                  <p className="text-red-400 text-xs mt-1">{createForm.formState.errors.budget.message}</p>
+              {/* Бюджет и период */}
+              <div className="space-y-4">
+                <div>
+                  <label className="text-gray-400 mb-2 block">Бюджет (₸) <span className="text-red-400">*</span></label>
+                  <input
+                    type="number"
+                    {...createForm.register('budget', {
+                      required: t.aiAdvertising.validation.budgetRequired,
+                      validate: (value) => {
+                        const num = parseFloat(String(value).replace(/[^\d.]/g, ''));
+                        if (isNaN(num) || num <= 0) {
+                          return t.aiAdvertising.validation.budgetPositive;
+                        }
+                        if (num < 1000) {
+                          return t.aiAdvertising.validation.budgetMinValue;
+                        }
+                        if (num > walletBalance) {
+                          return `Недостаточно средств. Доступно: ${walletBalance.toLocaleString()}₸`;
+                        }
+                        return true;
+                      },
+                      onChange: (e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        const platforms = createForm.watch('platforms') || [];
+                        setBudgetWarnings(getBudgetWarnings(platforms, val, periodDays));
+                      },
+                    })}
+                    placeholder={walletBalance > 0 ? `1,000 - ${walletBalance.toLocaleString()}` : '50000'}
+                    min="1000"
+                    max={walletBalance > 0 ? walletBalance : undefined}
+                    className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
+                      createForm.formState.errors.budget
+                        ? 'border-red-500 focus:border-red-500'
+                        : 'border-slate-700 focus:border-yellow-500/50'
+                    }`}
+                  />
+                  {createForm.formState.errors.budget && (
+                    <p className="text-red-400 text-xs mt-1">{createForm.formState.errors.budget.message}</p>
+                  )}
+                </div>
+
+                {/* Период бюджета */}
+                <div>
+                  <label className="text-gray-400 mb-2 block text-sm">Период бюджета</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setBudgetPeriod('week'); setPeriodDays(7); }}
+                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                        budgetPeriod === 'week'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      7 дней
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setBudgetPeriod('month'); setPeriodDays(30); }}
+                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                        budgetPeriod === 'month'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      30 дней
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBudgetPeriod('custom')}
+                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                        budgetPeriod === 'custom'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      Другой
+                    </button>
+                  </div>
+                  {budgetPeriod === 'custom' && (
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={periodDays}
+                      onChange={(e) => {
+                        const days = parseInt(e.target.value) || 7;
+                        setPeriodDays(days);
+                        const budget = parseFloat(createForm.watch('budget')) || 0;
+                        const platforms = createForm.watch('platforms') || [];
+                        setBudgetWarnings(getBudgetWarnings(platforms, budget, days));
+                      }}
+                      placeholder="Количество дней"
+                      className="mt-2 w-full px-4 py-2 bg-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+
+                {/* Калькулятор бюджета */}
+                <div className="bg-slate-800/50 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Доступный баланс:</span>
+                    {walletLoading ? (
+                      <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                    ) : (
+                      <span className={`font-semibold ${walletBalance > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {walletBalance.toLocaleString()}₸
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Бюджет в день:</span>
+                    <span className="text-white font-semibold">
+                      {(() => {
+                        const budget = parseFloat(createForm.watch('budget')) || 0;
+                        return budget > 0 ? `${Math.round(budget / periodDays).toLocaleString()}₸/день` : '—';
+                      })()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Период:</span>
+                    <span className="text-white font-semibold">{periodDays} дней</span>
+                  </div>
+                  {parseFloat(createForm.watch('budget')) > walletBalance && walletBalance > 0 && (
+                    <p className="text-red-400 text-sm mt-2 flex items-center gap-1">
+                      <span>⚠️</span> Бюджет превышает баланс кошелька
+                    </p>
+                  )}
+                </div>
+
+                {/* AI Рекомендации по бюджету */}
+                {budgetWarnings.length > 0 && (
+                  <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-yellow-400 font-medium mb-2 text-sm">Рекомендации по бюджету</h4>
+                        {budgetWarnings.map((warning, i) => (
+                          <p key={i} className="text-yellow-300/80 text-sm">• {warning}</p>
+                        ))}
+                        <p className="text-yellow-400/60 text-xs mt-2">
+                          Бюджет ниже рекомендуемого может снизить эффективность рекламы
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.validation.budgetMinValue}</p>
               </div>
 
               <div>

@@ -1,4 +1,4 @@
-import { ArrowLeft, MessageCircle, Send, Users, Check, Instagram, Menu, X, QrCode, RefreshCw, Bot, Loader2, AlertCircle, ChevronDown, ChevronUp, Brain, Inbox } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Send, Users, Check, Instagram, Menu, X, QrCode, RefreshCw, Bot, Loader2, AlertCircle, ChevronDown, ChevronUp, Brain, Inbox, XCircle } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { integrationsAPI, messengerAPI, type Integration, type MessengerConfig } from '../lib/api';
@@ -9,7 +9,7 @@ interface IntegrationsProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-type SetupStep = 'idle' | 'creating' | 'qr' | 'connected';
+type SetupStep = 'idle' | 'creating' | 'qr' | 'connected' | 'disconnected';
 
 export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
   const { t } = useLanguage();
@@ -58,13 +58,17 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
           showToast(t.integrations.whatsappSetup?.connected || 'WhatsApp connected!', 'success');
           loadMessengerConfigs();
         } else {
-          // Сессия НЕ подключена - сбрасываем состояние
-          // Статус может быть: SCAN_QR_CODE, STARTING, STOPPED, FAILED и др.
-          if (response.data.status === 'STOPPED' || response.data.status === 'FAILED' || response.data.status === 'DISCONNECTED') {
-            setWaSetupStep('idle');
-            setWaSessionStatus('');
+          // Сессия НЕ подключена - проверяем статус
+          // NO_SESSION = сессия была удалена или истекла
+          if (response.data.status === 'NO_SESSION') {
+            setWaSetupStep('disconnected');
+            setWaSessionStatus('NO_SESSION');
             stopPolling();
-            // Обновляем конфиги в БД через загрузку
+            loadMessengerConfigs();
+          } else if (response.data.status === 'STOPPED' || response.data.status === 'FAILED' || response.data.status === 'DISCONNECTED') {
+            setWaSetupStep('disconnected');
+            setWaSessionStatus(response.data.status);
+            stopPolling();
             loadMessengerConfigs();
           } else if (response.data.status === 'SCAN_QR_CODE' || response.data.status === 'STARTING') {
             setWaSetupStep('qr');
@@ -72,12 +76,19 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
         }
       }
     } catch {
-      // При ошибке сбрасываем состояние
-      setWaSetupStep('idle');
-      setWaSessionStatus('');
+      // При ошибке проверяем, была ли сессия ранее
+      const waConfig = messengerConfigs.find(c => c.type === 'whatsapp');
+      if (waConfig?.sessionId) {
+        // Была сессия, но сейчас ошибка - значит отключена
+        setWaSetupStep('disconnected');
+        setWaSessionStatus('NO_SESSION');
+      } else {
+        setWaSetupStep('idle');
+        setWaSessionStatus('');
+      }
       stopPolling();
     }
-  }, [stopPolling, showToast, t]);
+  }, [stopPolling, showToast, t, messengerConfigs]);
 
   const startPolling = useCallback(() => {
     stopPolling();
@@ -218,6 +229,27 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
     } catch (error) {
       console.error('Ошибка получения QR-кода:', error);
       showToast(t.integrations.whatsappSetup?.qrError || 'QR error', 'error');
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  // Reconnect WhatsApp (when session is disconnected)
+  const handleReconnectWhatsApp = async () => {
+    setWaLoading(true);
+    try {
+      // Создаём новую сессию
+      await messengerAPI.createWhatsAppSession();
+      setWaSetupStep('creating');
+      showToast(t.integrations.whatsappSetup?.sessionCreated || 'Session created!', 'success');
+      // Получаем QR-код
+      await handleGetWhatsAppQR();
+      setWaSetupStep('qr');
+      // Запускаем polling статуса
+      startPolling();
+    } catch (error) {
+      console.error('Ошибка переподключения WhatsApp:', error);
+      showToast(t.integrations.whatsappSetup?.reconnectError || 'Ошибка переподключения', 'error');
     } finally {
       setWaLoading(false);
     }
@@ -420,6 +452,39 @@ export function Integrations({ onNavigate, showToast }: IntegrationsProps) {
             <span className="text-green-400 font-medium">{t.integrations.whatsappSetup?.connected || 'Connected!'}</span>
             <p className="text-xs text-green-400/60 mt-0.5">{t.integrations.whatsappSetup?.sessionActive || 'Session is active and receiving messages'}</p>
           </div>
+        </div>
+      )}
+
+      {waSetupStep === 'disconnected' && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <XCircle className="w-6 h-6 text-red-400" />
+            <div>
+              <span className="text-red-400 font-medium">
+                {t.integrations.whatsappSetup?.sessionDisconnected || 'Сессия отключена'}
+              </span>
+              <p className="text-xs text-red-400/60 mt-0.5">
+                {t.integrations.whatsappSetup?.sessionExpired || 'WhatsApp был отключен или сессия истекла'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleReconnectWhatsApp}
+            disabled={waLoading}
+            className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          >
+            {waLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {t.integrations.whatsappSetup?.reconnecting || 'Переподключение...'}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-5 h-5" />
+                {t.integrations.whatsappSetup?.reconnect || 'Переподключить WhatsApp'}
+              </>
+            )}
+          </button>
         </div>
       )}
     </div>

@@ -92,22 +92,25 @@ model Message {
 }
 
 model Campaign {
-  id              Int      @id @default(autoincrement())
-  userId          Int
-  name            String
-  platform        String
-  status          String   @default("Активна")
-  budget          Decimal  @db.Decimal(10, 2)
-  spent           Decimal  @default(0) @db.Decimal(10, 2)
-  conversions     Int      @default(0)
-  imageUrl        String?
-  phone           String?  // Телефон для приёма заявок
-  audience        Json?    // Сохраняем данные аудитории (interests, ageRange, adText, recommendations и т.д.)
-  rejectionReason String?  // Причина отклонения админом
-  leads           Lead[]   // Связь с лидами
-  history         CampaignHistory[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  userId              Int
+  name                String
+  platform            String
+  status              String   @default("Активна")
+  budget              Decimal  @db.Decimal(10, 2)
+  spent               Decimal  @default(0) @db.Decimal(10, 2)
+  conversions         Int      @default(0)
+  imageUrl            String?
+  phone               String?  // Телефон для приёма заявок
+  audience            Json?    // Сохраняем данные аудитории (interests, ageRange, adText, recommendations и т.д.)
+  rejectionReason     String?  // Причина отклонения админом
+  budgetPeriodDays    Int      @default(7)  // Период бюджета в днях (7 = неделя, 30 = месяц)
+  dailyBudget         Decimal  @default(0) @db.Decimal(10, 2)  // Рассчитанный дневной бюджет
+  walletTransactionId Int?     // Связь с транзакцией списания бюджета
+  leads               Lead[]   // Связь с лидами
+  history             CampaignHistory[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@map("campaigns")
 }
@@ -318,6 +321,8 @@ enum TransactionType {
   withdrawal
   subscription
   refund
+  campaign_budget  // Резервирование бюджета для кампании
+  campaign_refund  // Возврат бюджета при отклонении кампании
 }
 
 model Notification {

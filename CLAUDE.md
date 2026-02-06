@@ -330,7 +330,7 @@ curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstance
 16. **Evolution API Redis** — по умолчанию требует Redis, но можно отключить: `CACHE_REDIS_ENABLED=false`, `CACHE_LOCAL_ENABLED=true`
 17. **Удаление Railway домена** — `mutation { serviceDomainDelete(id: "DOMAIN_ID") }` через GraphQL API
 18. **Backend ↔ Messenger-service** — backend требует `MESSENGER_SERVICE_URL` и `MESSENGER_API_KEY` для связи с messenger-service
-19. **Evolution API статусы** — Evolution возвращает `open/close/qrcode`, но frontend ожидает WAHA-совместимые `WORKING/STOPPED/SCAN_QR_CODE`. Маппинг в `session.routes.ts`
+19. **Evolution API статусы** — Evolution возвращает `open/close/qrcode/not_found`, frontend ожидает WAHA-совместимые. Маппинг в `whatsapp.service.ts`: `open→WORKING`, `close→STOPPED`, `qrcode→SCAN_QR_CODE`, `not_found→NO_SESSION`
 20. **Генерация изображений** — использует `gemini-2.0-flash-exp-image-generation`, файл `openai.service.ts` (название осталось от OpenAI, но внутри Gemini)
 21. **Рекламные платформы** — доступны только Instagram, Facebook, Google Ads, TikTok, YouTube (VK и Telegram Ads удалены)
 22. **Порты для локальной разработки**:
@@ -341,3 +341,10 @@ curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstance
     - Redis: 6379
 23. **BACKEND_URL на Railway** — обязательно установить для корректных URL изображений (иначе будет localhost)
 24. **Генерация изображений base64** — storage.service.ts умеет обрабатывать data: URL (не только http/https)
+25. **Evolution API сессии теряются** — если `DATABASE_ENABLED=false`, сессии пропадают при редеплое. Обязательные переменные для персистентности:
+    - `DATABASE_ENABLED=true`
+    - `DATABASE_PROVIDER=postgresql`
+    - `DATABASE_CONNECTION_URI=...`
+    - `DATABASE_SAVE_DATA_INSTANCE=true`
+26. **Чаты WhatsApp не загружаются** — если телефон показывает "подключено", но чаты пустые, проверь Evolution API `/instance/fetchInstances`. Если массив пуст `[]`, нужно пересканировать QR код
+27. **Бюджет кампаний списывается с кошелька** — при создании кампании бюджет резервируется с кошелька пользователя (тип транзакции `campaign_budget`). Кампанию нельзя создать если баланс меньше бюджета. Период бюджета: 7/30/custom дней
