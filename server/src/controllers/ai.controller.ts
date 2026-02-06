@@ -305,16 +305,16 @@ export async function generateAdImageHandler(req: Request, res: Response) {
       });
     }
     
-    // Генерируем изображение через DALL-E
+    // Генерируем изображение через Gemini
     const imageUrl = await generateAdImage(campaignName, category || 'general', description);
-    
+
     if (!imageUrl) {
-      return res.status(503).json({ 
-        error: 'Не удалось сгенерировать изображение. Убедитесь, что OpenAI API настроен корректно.' 
+      return res.status(503).json({
+        error: 'Не удалось сгенерировать изображение. Убедитесь, что GEMINI_API_KEY настроен корректно.'
       });
     }
-    
-    // Сохраняем изображение в Supabase Storage, чтобы избежать истечения URL
+
+    // Сохраняем изображение в локальное хранилище
     const permanentUrl = await saveImageToStorage(imageUrl, `campaign-${campaignName.replace(/\s+/g, '-').toLowerCase()}`);
     
     res.json({ imageUrl: permanentUrl || imageUrl });
