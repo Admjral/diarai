@@ -239,9 +239,12 @@ export async function getAIAudience(req: Request, res: Response) {
       ...result,
       aiPowered: isOpenAIAvailable(),
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Ошибка при подборе аудитории:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    res.status(500).json({
+      error: error.message || 'Ошибка сервера',
+      aiPowered: isOpenAIAvailable(),
+    });
   }
 }
 

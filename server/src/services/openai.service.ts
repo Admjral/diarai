@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
+import { log } from '../utils/logger';
 
 dotenv.config();
 
@@ -18,12 +19,11 @@ try {
   if (apiKey && apiKey.length > 0) {
     genAI = new GoogleGenerativeAI(apiKey);
     console.log('✅ Gemini API настроен и готов к использованию');
-    console.log('✅ Imagen (генерация изображений) доступен через тот же API ключ');
   } else {
-    console.log('ℹ️  Gemini API ключ не найден. Используется fallback режим.');
+    console.log('⚠️ Gemini API ключ не найден');
   }
 } catch (error) {
-  console.error('⚠️  Ошибка при инициализации Gemini:', error);
+  console.error('⚠️ Ошибка при инициализации Gemini:', error);
   genAI = null;
 }
 
@@ -52,6 +52,7 @@ export const getOpenAIStatus = getGeminiStatus;
 
 /**
  * Генерация текста объявления с помощью Gemini
+ * Без fallback шаблонов - Gemini генерирует всё сам
  */
 export async function generateAdText(
   campaignName: string,
@@ -61,66 +62,67 @@ export async function generateAdText(
   description?: string
 ): Promise<string> {
   if (!isGeminiAvailable() || !genAI) {
-    return generateFallbackAdText(campaignName, category, location);
+    log.warn('Gemini недоступен для генерации текста', { campaignName });
+    throw new Error('AI сервис временно недоступен. Попробуйте позже.');
   }
 
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const platformInfo = platforms && platforms.length > 0
-      ? `\nПлатформы для размещения: ${platforms.join(', ')}`
+      ? `\nПлатформы: ${platforms.join(', ')}`
       : '';
 
     const locationInfo = location ? `\nЛокация: ${location}` : '';
-    const descriptionText = description ? `\n\nОписание бизнеса/продукта: ${description}` : '';
+    const descriptionText = description ? `\nОписание: ${description}` : '';
 
-    const platformGuidance = platforms && platforms.length > 0 ? `
-Учти специфику платформ:
-${platforms.map(p => {
-  const guides: Record<string, string> = {
-    'Instagram': 'Короткий, визуальный текст, эмоциональный, с эмодзи',
-    'Facebook': 'Более информативный, с призывом к действию',
-    'TikTok': 'Очень короткий, трендовый, цепляющий',
-    'YouTube': 'Информативный, с акцентом на ценность',
-    'Google Ads': 'Четкий, с ключевыми словами, призыв к действию',
-    'VK': 'Информативный, дружелюбный тон',
-    'Telegram Ads': 'Короткий, прямой, с акцентом на выгоду',
-  };
-  return `- ${p}: ${guides[p] || 'Стандартный формат'}`;
-}).join('\n')}` : '';
+    const prompt = `Создай рекламное объявление для "${campaignName}".
 
-    const prompt = `Ты профессиональный копирайтер. Создай эффективное рекламное объявление для кампании "${campaignName}".
+Контекст:
+- Категория: ${category}${platformInfo}${locationInfo}${descriptionText}
 
-Категория бизнеса: ${category}${platformInfo}${locationInfo}${descriptionText}${platformGuidance}
+Требования:
+1. Длина: 100-200 символов
+2. Язык: русский
+3. Структура: Привлечение внимания → Выгода → Призыв к действию
+4. Стиль: Живой, конкретный, продающий
+5. Можно использовать 1-2 эмодзи
 
-ТРЕБОВАНИЯ К ТЕКСТУ:
-1. Язык: русский
-2. Длина: 80-120 символов (строго соблюдай)
-3. Стиль: эмоциональный и убедительный, с четким призывом к действию
-4. Формат: без эмодзи в начале текста, можно 1-2 эмодзи в конце
-5. Контент: упомяни ключевое преимущество, включи призыв к действию
+Верни ТОЛЬКО текст объявления.`;
 
-Верни ТОЛЬКО текст объявления, без кавычек и префиксов.`;
+    log.debug('Генерирую текст через Gemini', { campaignName, category });
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let adText = response.text().trim();
 
-    // Очищаем от кавычек и префиксов
+    // Очищаем от лишнего
     adText = adText.replace(/^["'«»]|["'«»]$/g, '').trim();
-    adText = adText.replace(/^(Объявление|Текст|Реклама|Ad):\s*/i, '').trim();
+    adText = adText.replace(/^(Объявление|Текст|Реклама|Вот текст):\s*/i, '').trim();
+    adText = adText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
-    if (adText.length >= 10 && adText.length <= 150) {
-      console.log(`✅ Сгенерирован текст объявления (${adText.length} символов)`);
+    if (adText.length >= 10) {
+      // Обрезаем если слишком длинный
+      if (adText.length > 250) {
+        const lastBreak = Math.max(adText.lastIndexOf('.'), adText.lastIndexOf('!'));
+        if (lastBreak > 150) {
+          adText = adText.substring(0, lastBreak + 1);
+        } else {
+          adText = adText.substring(0, 250);
+        }
+      }
+
+      log.info('✅ Текст объявления сгенерирован', {
+        campaignName,
+        length: adText.length
+      });
       return adText;
-    } else if (adText.length > 150) {
-      return adText.substring(0, 150).trim();
     }
 
-    return generateFallbackAdText(campaignName, category, location);
-  } catch (error) {
-    console.error('Ошибка при генерации текста через Gemini:', error);
-    return generateFallbackAdText(campaignName, category, location);
+    throw new Error('Не удалось сгенерировать текст');
+  } catch (error: any) {
+    log.error('Ошибка генерации текста', error, { campaignName, category });
+    throw new Error(error.message || 'Ошибка генерации текста');
   }
 }
 
@@ -135,55 +137,51 @@ export async function generateRecommendations(
   description?: string
 ): Promise<string[]> {
   if (!isGeminiAvailable() || !genAI) {
-    return generateFallbackRecommendations(budget, platforms, category);
+    log.warn('Gemini недоступен для рекомендаций', { campaignName });
+    return ['Настройте таргетинг на вашу целевую аудиторию', 'Тестируйте разные креативы', 'Отслеживайте конверсии'];
   }
 
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const descriptionText = description ? `\n\nОписание бизнеса/продукта: ${description}` : '';
+    const descriptionText = description ? `\nОписание: ${description}` : '';
 
-    const budgetGuidance = budget < 20000
-      ? 'Ограниченный бюджет - фокус на 1-2 платформах'
-      : budget > 100000
-      ? 'Большой бюджет - тестирование нескольких аудиторий'
-      : 'Средний бюджет - баланс между охватом и конверсией';
+    const prompt = `Дай 4 конкретные рекомендации для рекламной кампании "${campaignName}".
 
-    const prompt = `Ты эксперт по цифровому маркетингу. Создай 4-5 конкретных рекомендаций по оптимизации рекламной кампании "${campaignName}".
-
-ПАРАМЕТРЫ КАМПАНИИ:
-- Бюджет: ${budget.toLocaleString()} тенге (${budgetGuidance})
+Параметры:
+- Бюджет: ${budget.toLocaleString()} тенге
 - Платформы: ${platforms.join(', ')}
 - Категория: ${category}${descriptionText}
 
-ТРЕБОВАНИЯ:
-- Каждая рекомендация должна быть конкретной и практичной
+Требования:
+- Конкретные, практичные советы
 - На русском языке
-- Длина: 1-2 предложения
-- Начинай с глагола (Настройте, Создайте, Запустите)
+- 1-2 предложения каждая
+- Начинай с глагола
 
-Верни ТОЛЬКО список рекомендаций, по одной на строку, без нумерации и маркеров.`;
+Верни список рекомендаций, по одной на строку.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const recommendationsText = response.text().trim();
+    const text = response.text().trim();
 
-    if (recommendationsText) {
-      const recommendations = recommendationsText
+    if (text) {
+      const recommendations = text
         .split('\n')
-        .map(r => r.trim())
-        .filter(r => r.length > 20 && !r.match(/^\d+[\.\)\-\s]/) && !r.match(/^[-\*\•]\s/))
+        .map(r => r.replace(/^[\d\.\)\-\*\•]\s*/, '').trim())
+        .filter(r => r.length > 15)
         .slice(0, 5);
 
-      return recommendations.length > 0
-        ? recommendations
-        : generateFallbackRecommendations(budget, platforms, category);
+      if (recommendations.length > 0) {
+        log.info('✅ Рекомендации сгенерированы', { campaignName, count: recommendations.length });
+        return recommendations;
+      }
     }
 
-    return generateFallbackRecommendations(budget, platforms, category);
+    return ['Настройте таргетинг на вашу целевую аудиторию', 'Тестируйте разные креативы', 'Отслеживайте метрики'];
   } catch (error) {
-    console.error('Ошибка при генерации рекомендаций через Gemini:', error);
-    return generateFallbackRecommendations(budget, platforms, category);
+    log.error('Ошибка генерации рекомендаций', error as Error, { campaignName });
+    return ['Настройте таргетинг', 'Тестируйте креативы', 'Анализируйте результаты'];
   }
 }
 
@@ -192,7 +190,7 @@ export async function generateRecommendations(
  */
 export async function analyzeCampaignCategory(campaignName: string, description?: string): Promise<string> {
   if (!isGeminiAvailable() || !genAI) {
-    return analyzeCategoryFallback(campaignName);
+    return analyzeCategoryByKeywords(campaignName);
   }
 
   try {
@@ -200,20 +198,11 @@ export async function analyzeCampaignCategory(campaignName: string, description?
 
     const descriptionText = description ? `\nОписание: ${description}` : '';
 
-    const prompt = `Определи категорию бизнеса по названию кампании: "${campaignName}"${descriptionText}
+    const prompt = `Определи категорию бизнеса: "${campaignName}"${descriptionText}
 
-Доступные категории:
-- fashion (мода, одежда)
-- beauty (косметика, уход)
-- tech (технологии, гаджеты)
-- food (еда, рестораны)
-- fitness (спорт, здоровье)
-- education (обучение)
-- realEstate (недвижимость)
-- automotive (авто)
-- general (остальное)
+Категории: fashion, beauty, tech, food, fitness, education, realEstate, automotive, general
 
-Верни ТОЛЬКО название категории на английском (например: fashion).`;
+Верни ТОЛЬКО одно слово - название категории.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -224,10 +213,10 @@ export async function analyzeCampaignCategory(campaignName: string, description?
       return category === 'realestate' ? 'realEstate' : category;
     }
 
-    return analyzeCategoryFallback(campaignName);
+    return analyzeCategoryByKeywords(campaignName);
   } catch (error) {
-    console.error('Ошибка при анализе категории через Gemini:', error);
-    return analyzeCategoryFallback(campaignName);
+    log.error('Ошибка анализа категории', error as Error, { campaignName });
+    return analyzeCategoryByKeywords(campaignName);
   }
 }
 
@@ -248,47 +237,46 @@ export async function generateAudienceInterests(
 
     const descriptionText = description ? `\nОписание: ${description}` : '';
 
-    const prompt = `Определи 6-8 релевантных интересов для целевой аудитории кампании "${campaignName}".
+    const prompt = `Определи 6 интересов целевой аудитории для "${campaignName}".
 
 Категория: ${category}${descriptionText}
 
-ТРЕБОВАНИЯ:
-- Интересы на русском языке
-- Конкретные, для таргетинга (Мода, Фитнес, Технологии и т.д.)
+Требования:
+- На русском языке
+- Конкретные интересы для таргетинга
 
-Верни список интересов, по одному на строку, без нумерации.`;
+Верни список интересов, по одному на строку.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const interestsText = response.text().trim();
+    const text = response.text().trim();
 
-    if (interestsText) {
-      const interests = interestsText
+    if (text) {
+      const interests = text
         .split('\n')
-        .map(i => i.trim())
-        .filter(i => i.length > 2 && !i.match(/^\d+[\.\)\-\s]/) && !i.match(/^[-\*\•]\s/))
+        .map(i => i.replace(/^[\d\.\)\-\*\•]\s*/, '').trim())
+        .filter(i => i.length > 2)
         .slice(0, 8);
 
-      return interests.length > 0 ? interests : [];
+      return interests;
     }
 
     return [];
   } catch (error) {
-    console.error('Ошибка при генерации интересов через Gemini:', error);
+    log.error('Ошибка генерации интересов', error as Error, { campaignName });
     return [];
   }
 }
 
 /**
- * Проверка доступности Imagen (использует тот же API ключ что и Gemini)
+ * Проверка доступности генерации изображений
  */
 export function isImagenAvailable(): boolean {
   return isGeminiAvailable();
 }
 
 /**
- * Генерация изображения через Google Imagen (Generative AI API)
- * Использует тот же API ключ что и Gemini
+ * Генерация изображения через Google Gemini API
  */
 export async function generateAdImage(
   campaignName: string,
@@ -297,241 +285,118 @@ export async function generateAdImage(
 ): Promise<string | null> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.log('Imagen недоступен - API ключ не настроен');
+    log.warn('Gemini недоступен для генерации изображений');
     return null;
   }
 
+  // Стили по категориям
+  const styles: Record<string, string> = {
+    fashion: 'elegant fashion photography, studio lighting, minimalist',
+    beauty: 'beauty product photography, soft lighting, luxury',
+    tech: 'modern technology, sleek design, futuristic',
+    food: 'appetizing food photography, professional lighting',
+    fitness: 'dynamic fitness scene, energetic, motivational',
+    education: 'professional educational setting, modern',
+    realEstate: 'real estate photography, bright interior',
+    automotive: 'automotive photography, dramatic lighting',
+    general: 'professional advertising photography, clean design',
+  };
+
+  const style = styles[category] || styles.general;
+  const desc = description ? `. ${description}` : '';
+  const prompt = `Professional advertising image for "${campaignName}"${desc}. Style: ${style}. High resolution, social media ready. No text, no logos.`;
+
+  // Модели для генерации изображений
+  const models = [
+    'gemini-2.0-flash-exp-image-generation',
+    'imagen-3.0-generate-002',
+  ];
+
+  for (const model of models) {
+    log.info(`Пробую генерацию изображения: ${model}`, { campaignName });
+
+    const result = await tryGenerateImage(apiKey, model, prompt);
+    if (result) {
+      log.info(`✅ Изображение сгенерировано через ${model}`, { campaignName });
+      return result;
+    }
+  }
+
+  log.warn('Не удалось сгенерировать изображение', { campaignName, category });
+  return null;
+}
+
+/**
+ * Попытка генерации изображения через конкретную модель
+ */
+async function tryGenerateImage(apiKey: string, model: string, prompt: string): Promise<string | null> {
   try {
-    // Формируем промпт для генерации рекламного изображения
-    const categoryStyles: Record<string, string> = {
-      fashion: 'elegant fashion photography, studio lighting, minimalist background, high-end product shot',
-      beauty: 'beauty product photography, soft diffused lighting, clean aesthetic, luxury feel',
-      tech: 'modern technology visualization, sleek design, futuristic blue tones, premium gadget',
-      food: 'appetizing food photography, professional lighting, restaurant quality, gourmet presentation',
-      fitness: 'dynamic fitness scene, energetic atmosphere, motivational, active lifestyle',
-      education: 'professional educational setting, modern classroom, inspiring learning environment',
-      realEstate: 'real estate photography, bright natural interior, welcoming home atmosphere',
-      automotive: 'automotive photography, dramatic lighting, premium car, showroom quality',
-      general: 'professional advertising photography, clean modern design, commercial quality',
-    };
-
-    const style = categoryStyles[category] || categoryStyles.general;
-    const descriptionText = description ? `. Product/service: ${description}` : '';
-
-    const prompt = `Professional advertising image for "${campaignName}"${descriptionText}. Style: ${style}. High resolution, suitable for social media marketing and digital ads. No text, no logos, no watermarks.`;
-
-    // Используем Gemini 2.0 Flash Image Generation (рабочая модель)
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `Generate image: ${prompt}`
-          }]
-        }],
-        generationConfig: {
-          responseModalities: ['IMAGE', 'TEXT'],
-        },
+        contents: [{ parts: [{ text: `Generate image: ${prompt}` }] }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
       }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Gemini Image Generation API error:', response.status, errorData);
+      const errorText = await response.text();
+      log.error(`Ошибка API ${model}`, new Error(`HTTP ${response.status}`), {
+        status: response.status,
+        error: errorText.substring(0, 300)
+      });
       return null;
     }
 
-    const data = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{
-            inlineData?: { mimeType?: string; data?: string }
-          }>
-        }
-      }>
-    };
+    const data = await response.json();
 
     // Ищем изображение в ответе
-    const candidates = data.candidates || [];
-    for (const candidate of candidates) {
-      const parts = candidate.content?.parts || [];
-      for (const part of parts) {
+    for (const candidate of data.candidates || []) {
+      for (const part of candidate.content?.parts || []) {
         if (part.inlineData?.mimeType?.startsWith('image/')) {
-          console.log('✅ Изображение сгенерировано через Gemini 2.0 Flash');
+          log.info('Изображение получено', {
+            model,
+            mimeType: part.inlineData.mimeType,
+            sizeKB: Math.round((part.inlineData.data?.length || 0) / 1024)
+          });
           return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
         }
       }
     }
 
-    console.log('Gemini не вернул изображение');
+    // Проверяем блокировку
+    if (data.promptFeedback?.blockReason) {
+      log.warn('Контент заблокирован', { model, reason: data.promptFeedback.blockReason });
+    }
+
     return null;
   } catch (error) {
-    console.error('Ошибка при генерации изображения через Imagen:', error);
+    log.error(`Исключение при генерации ${model}`, error as Error);
     return null;
   }
 }
 
 /**
- * Альтернативная генерация через gemini-2.0-flash (если Imagen недоступен)
- * Gemini 2.0 может генерировать изображения
+ * Простой анализ категории по ключевым словам
  */
-async function generateImageFallback(prompt: string, apiKey: string): Promise<string | null> {
-  try {
-    // Gemini 2.0 Flash с генерацией изображений
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `Generate an image: ${prompt}`
-          }]
-        }],
-        generationConfig: {
-          responseModalities: ['IMAGE', 'TEXT'],
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      console.error('Gemini 2.0 image generation failed:', response.status);
-      return null;
-    }
-
-    const data = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{
-            inlineData?: { mimeType?: string; data?: string }
-          }>
-        }
-      }>
-    };
-
-    // Ищем изображение в ответе
-    const candidates = data.candidates || [];
-    for (const candidate of candidates) {
-      const parts = candidate.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData?.mimeType?.startsWith('image/')) {
-          console.log('✅ Изображение сгенерировано через Gemini 2.0');
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-      }
-    }
-
-    console.log('Gemini 2.0 не вернул изображение');
-    return null;
-  } catch (error) {
-    console.error('Ошибка генерации через Gemini 2.0:', error);
-    return null;
-  }
-}
-
-// Fallback функции
-
-function generateFallbackAdText(campaignName: string, category: string, location?: string): string {
-  const templates: Record<string, string[]> = {
-    fashion: [
-      `${campaignName}! Откройте для себя новую коллекцию и стильные решения. Эксклюзивные предложения только сейчас!`,
-      `${campaignName} - ваш стиль, ваша индивидуальность. Качественные материалы и современный дизайн.`,
-    ],
-    beauty: [
-      `${campaignName} - преобразитесь с нашими продуктами! Профессиональный уход и потрясающие результаты.`,
-      `${campaignName}: откройте секрет красоты. Натуральные ингредиенты и проверенная эффективность.`,
-    ],
-    tech: [
-      `${campaignName} - инновационные технологии будущего уже здесь! Современные решения для вашего комфорта.`,
-      `${campaignName}: передовые технологии и надежность. Выберите лучшее для себя и своего бизнеса.`,
-    ],
-    food: [
-      `${campaignName} - вкус, который вы запомните! Свежие ингредиенты и быстрая доставка прямо к вам.`,
-      `${campaignName}: гастрономическое удовольствие в каждом блюде. Закажите прямо сейчас!`,
-    ],
-    fitness: [
-      `${campaignName} - начните свой путь к идеальной форме! Профессиональные тренировки и поддержка.`,
-      `${campaignName}: здоровье и сила в ваших руках. Присоединяйтесь к сообществу активных людей!`,
-    ],
-    education: [
-      `${campaignName} - инвестируйте в свое будущее! Практические знания и реальные результаты.`,
-      `${campaignName}: откройте новые возможности. Обучение от практикующих экспертов.`,
-    ],
-    realEstate: [
-      `${campaignName} - найдите дом своей мечты! Лучшие предложения на рынке недвижимости.`,
-      `${campaignName}: выгодные условия и надежные сделки. Ваша недвижимость ждет вас!`,
-    ],
-    automotive: [
-      `${campaignName} - качество и надежность на дорогах! Профессиональный сервис и оригинальные запчасти.`,
-      `${campaignName}: ваш автомобиль в надежных руках. Опыт и профессионализм в каждом решении.`,
-    ],
-    general: [
-      `${campaignName} - качество, которое вы заслуживаете! Лучшие предложения и индивидуальный подход.`,
-      `${campaignName}: ваш успех - наша цель. Присоединяйтесь к тысячам довольных клиентов!`,
-    ],
+function analyzeCategoryByKeywords(campaignName: string): string {
+  const name = campaignName.toLowerCase();
+  const keywords: Record<string, string[]> = {
+    fashion: ['мода', 'одежда', 'стиль', 'бренд', 'коллекция'],
+    beauty: ['красота', 'косметика', 'макияж', 'уход', 'крем'],
+    tech: ['технолог', 'гаджет', 'смартфон', 'ноутбук', 'it'],
+    food: ['еда', 'ресторан', 'кафе', 'доставка', 'пицца'],
+    fitness: ['фитнес', 'спорт', 'тренировк', 'здоровь', 'йога'],
+    education: ['обучен', 'курс', 'школ', 'образован'],
+    realEstate: ['недвижимост', 'квартир', 'дом', 'аренд'],
+    automotive: ['авто', 'машин', 'автомобил', 'запчаст'],
   };
 
-  const categoryTemplates = templates[category] || templates.general;
-  let text = categoryTemplates[Math.floor(Math.random() * categoryTemplates.length)];
-
-  if (location) {
-    text += ` ${location}.`;
-  }
-
-  return text;
-}
-
-function generateFallbackRecommendations(budget: number, platforms: string[], category: string): string[] {
-  const recommendations: string[] = [];
-
-  if (platforms.includes('Facebook') || platforms.includes('Instagram')) {
-    recommendations.push(`Используйте таргетированную рекламу на ${platforms.filter(p => ['Facebook', 'Instagram'].includes(p)).join(' и ')} для привлечения аудитории`);
-  }
-
-  if (platforms.includes('TikTok')) {
-    recommendations.push('Оптимизируйте креативы для TikTok, добавив вирусные элементы и популярные тренды');
-  }
-
-  if (platforms.includes('Google Ads')) {
-    recommendations.push('Запустите ремаркетинг в Google Ads для пользователей, которые уже посетили ваш сайт');
-  }
-
-  if (platforms.includes('YouTube')) {
-    recommendations.push('Создайте контент с полезной информацией на YouTube для улучшения SEO');
-  }
-
-  if (budget < 20000) {
-    recommendations.push('Рекомендуем сфокусироваться на 1-2 платформах для максимальной эффективности');
-  } else if (budget > 100000) {
-    recommendations.push('Большой бюджет позволяет тестировать несколько аудиторий и проводить A/B тестирование');
-  }
-
-  return recommendations.slice(0, 4);
-}
-
-function analyzeCategoryFallback(campaignName: string): string {
-  const nameLower = campaignName.toLowerCase();
-  const categoryKeywords: Record<string, string[]> = {
-    fashion: ['мода', 'одежда', 'стиль', 'бренд', 'коллекция', 'sale', 'распродажа'],
-    beauty: ['красота', 'косметика', 'макияж', 'уход', 'крем', 'парфюм'],
-    tech: ['технологии', 'гаджеты', 'смартфон', 'ноутбук', 'электроника', 'it'],
-    food: ['еда', 'ресторан', 'кафе', 'доставка', 'пицца', 'бургер', 'кухня'],
-    fitness: ['фитнес', 'спорт', 'тренировка', 'здоровье', 'йога', 'тренажер'],
-    education: ['обучение', 'курсы', 'школа', 'университет', 'образование'],
-    realEstate: ['недвижимость', 'квартира', 'дом', 'аренда', 'продажа'],
-    automotive: ['авто', 'машина', 'автомобиль', 'запчасти', 'сервис'],
-  };
-
-  for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    if (keywords.some(keyword => nameLower.includes(keyword))) {
+  for (const [category, words] of Object.entries(keywords)) {
+    if (words.some(word => name.includes(word))) {
       return category;
     }
   }
