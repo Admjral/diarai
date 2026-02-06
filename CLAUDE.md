@@ -332,3 +332,12 @@ curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstance
 18. **Backend ↔ Messenger-service** — backend требует `MESSENGER_SERVICE_URL` и `MESSENGER_API_KEY` для связи с messenger-service
 19. **Evolution API статусы** — Evolution возвращает `open/close/qrcode`, но frontend ожидает WAHA-совместимые `WORKING/STOPPED/SCAN_QR_CODE`. Маппинг в `session.routes.ts`
 20. **Генерация изображений** — использует `gemini-2.0-flash-exp-image-generation`, файл `openai.service.ts` (название осталось от OpenAI, но внутри Gemini)
+21. **Рекламные платформы** — доступны только Instagram, Facebook, Google Ads, TikTok, YouTube (VK и Telegram Ads удалены)
+22. **Порты для локальной разработки**:
+    - Backend: 3001
+    - Frontend (Vite): 5173
+    - Messenger-service: 3002
+    - Evolution API: 8080
+    - Redis: 6379
+23. **BACKEND_URL на Railway** — обязательно установить для корректных URL изображений (иначе будет localhost)
+24. **Генерация изображений base64** — storage.service.ts умеет обрабатывать data: URL (не только http/https)

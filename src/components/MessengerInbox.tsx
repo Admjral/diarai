@@ -426,25 +426,25 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
       return renderSystemMessage('Эскалировано оператору', msg.id);
     }
 
-    // Bubble border radius based on grouping
+    // Bubble border radius based on grouping (Telegram-like)
     const getBubbleRadius = () => {
       if (!isOutgoing) {
         // Incoming (left)
-        if (isFirstInGroup && isLastInGroup) return 'rounded-2xl rounded-bl-sm';
-        if (isFirstInGroup) return 'rounded-2xl rounded-bl-md';
-        if (isLastInGroup) return 'rounded-2xl rounded-tl-md rounded-bl-sm';
-        return 'rounded-2xl rounded-tl-md rounded-bl-md';
+        if (isFirstInGroup && isLastInGroup) return 'rounded-xl rounded-bl-[4px]';
+        if (isFirstInGroup) return 'rounded-xl rounded-bl-md';
+        if (isLastInGroup) return 'rounded-xl rounded-tl-md rounded-bl-[4px]';
+        return 'rounded-xl rounded-tl-md rounded-bl-md';
       } else {
         // Outgoing (right)
-        if (isFirstInGroup && isLastInGroup) return 'rounded-2xl rounded-br-sm';
-        if (isFirstInGroup) return 'rounded-2xl rounded-br-md';
-        if (isLastInGroup) return 'rounded-2xl rounded-tr-md rounded-br-sm';
-        return 'rounded-2xl rounded-tr-md rounded-br-md';
+        if (isFirstInGroup && isLastInGroup) return 'rounded-xl rounded-br-[4px]';
+        if (isFirstInGroup) return 'rounded-xl rounded-br-md';
+        if (isLastInGroup) return 'rounded-xl rounded-tr-md rounded-br-[4px]';
+        return 'rounded-xl rounded-tr-md rounded-br-md';
       }
     };
 
-    // Spacing between messages
-    const marginBottom = isLastInGroup ? 'mb-4' : 'mb-1';
+    // Spacing between messages (tighter for Telegram-like feel)
+    const marginBottom = isLastInGroup ? 'mb-3' : 'mb-0.5';
 
     return (
       <div key={msg.id}>
@@ -468,12 +468,12 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
 
         <div className={`flex ${marginBottom} ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
           <div
-            className={`max-w-[80%] sm:max-w-[65%] px-4 py-2.5 relative shadow-md ${getBubbleRadius()} ${
+            className={`max-w-[80%] sm:max-w-[70%] px-3.5 py-2 relative shadow-sm ${getBubbleRadius()} ${
               !isOutgoing
-                ? 'bg-[#2a2f3e] text-white'
+                ? 'bg-[#212936] text-white'
                 : isAI
-                ? 'bg-gradient-to-br from-violet-600/80 to-purple-700/70 text-white'
-                : 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
+                ? 'bg-gradient-to-br from-violet-600 to-purple-700 text-white'
+                : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white'
             }`}
           >
             {/* Sender label - only on first message in group */}
@@ -499,11 +499,11 @@ export const MessengerInbox = memo(function MessengerInbox({ showToast, onNaviga
               </div>
             )}
 
-            <p className="whitespace-pre-wrap break-words text-[14px] leading-[1.55]">{msg.text}</p>
+            <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.45]">{msg.text}</p>
 
             {/* Time + status */}
-            <div className="flex items-center justify-end gap-1 mt-1">
-              <span className={`text-[10px] leading-none ${isOutgoing ? 'text-white/60' : 'text-gray-400'}`}>
+            <div className="flex items-center justify-end gap-0.5 mt-0.5 -mb-0.5">
+              <span className={`text-[9px] leading-none ${isOutgoing ? 'text-white/50' : 'text-gray-500'}`}>
                 {formatMessageTime(msg.createdAt)}
               </span>
               {isOutgoing && <StatusIcon status={msg.status} />}

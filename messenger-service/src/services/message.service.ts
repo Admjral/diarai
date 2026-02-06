@@ -28,7 +28,7 @@ export class MessageService {
   private diarApiKey: string;
 
   constructor() {
-    this.diarBackendUrl = process.env.DIAR_BACKEND_URL || 'http://localhost:5001';
+    this.diarBackendUrl = process.env.DIAR_BACKEND_URL || 'http://localhost:3001';
     this.diarApiKey = process.env.DIAR_API_KEY || '';
 
     log.info('Message service initialized');

@@ -395,7 +395,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const availablePlatforms = ['Instagram', 'Facebook', 'Google Ads', 'TikTok', 'YouTube', 'VK', 'Telegram Ads'];
+  const availablePlatforms = ['Instagram', 'Facebook', 'Google Ads', 'TikTok', 'YouTube'];
   
   // Состояния для поиска, фильтрации, сортировки и пагинации
   const [searchQuery, setSearchQuery] = useState('');
@@ -1357,10 +1357,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               <Sparkles className="w-6 h-6 text-purple-400" />
             </div>
             <div className="flex-1">
-              <h3 className="text-white mb-2">{t.aiAdvertising.recommendations.title}</h3>
-              <p className="text-gray-300 mb-4">
-                {t.aiAdvertising.recommendations.example}
-              </p>
+              <h3 className="text-white mb-4">{t.aiAdvertising.recommendations.title}</h3>
               <div className="flex gap-2 sm:gap-3 flex-wrap">
                 <button
                   onClick={() => showToast(t.aiAdvertising.messages.recommendationApplied, 'success')}
@@ -2823,89 +2820,6 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                               </div>
                             )}
                             
-                            {/* VK превью */}
-                            {platform === 'VK' && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700 w-full max-w-lg mx-auto">
-                                {generatedImageUrl ? (
-                                  <SafeImage 
-                                    src={generatedImageUrl} 
-                                    alt={t.aiAdvertising.imageAlt.preview} 
-                                    className="w-full aspect-[4/3] object-cover"
-                                    showErrorPlaceholder={false}
-                                  />
-                                ) : (
-                                  <div className="w-full aspect-[4/3] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-                                    <span className="text-white/50 text-sm">Изображение объявления</span>
-                                  </div>
-                                )}
-                                <div className="p-3 bg-slate-800">
-                                  {(() => {
-                                    const displayText = (generatedAdText?.trim() || selectedAudience?.adText?.trim() || '').trim();
-                                    if (displayText && displayText.length > 0) {
-                                      return (
-                                        <p className="text-white text-sm leading-relaxed break-words whitespace-pre-wrap">
-                                          {displayText}
-                                        </p>
-                                      );
-                                    } else if (adDescription?.trim()) {
-                                      return (
-                                        <p className="text-white text-sm leading-relaxed break-words whitespace-pre-wrap">
-                                          {adDescription.trim()}
-                                        </p>
-                                      );
-                                    } else {
-                                      return (
-                                        <p className="text-gray-400 text-sm italic">{t.aiAdvertising.form.adTextPreview}</p>
-                                      );
-                                    }
-                                  })()}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Telegram Ads превью */}
-                            {platform === 'Telegram Ads' && (
-                              <div className="bg-slate-800 text-white rounded-lg overflow-hidden border border-slate-700 w-full max-w-sm mx-auto">
-                                {generatedImageUrl ? (
-                                  <img 
-                                    src={generatedImageUrl} 
-                                    alt={t.aiAdvertising.imageAlt.preview} 
-                                    className="w-full aspect-square object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full aspect-square bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center">
-                                    <span className="text-white/50 text-sm">Изображение объявления</span>
-                                  </div>
-                                )}
-                                <div className="p-3 bg-slate-800">
-                                  {(() => {
-                                    const displayText = (generatedAdText?.trim() || selectedAudience?.adText?.trim() || '').trim();
-                                    if (displayText && displayText.length > 0) {
-                                      return (
-                                        <p className="text-white text-sm leading-relaxed mb-2 break-words whitespace-pre-wrap">
-                                          {displayText}
-                                        </p>
-                                      );
-                                    } else if (adDescription?.trim()) {
-                                      return (
-                                        <p className="text-white text-sm leading-relaxed mb-2 break-words whitespace-pre-wrap">
-                                          {adDescription.trim()}
-                                        </p>
-                                      );
-                                    } else {
-                                      return (
-                                        <p className="text-gray-400 text-sm italic mb-2">Текст объявления будет здесь</p>
-                                      );
-                                    }
-                                  })()}
-                                  {createForm.watch('phone') && (
-                                    <button className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors break-words">
-                                      Связаться: {createForm.watch('phone')}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         ))}
                       </div>

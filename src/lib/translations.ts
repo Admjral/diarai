@@ -436,7 +436,6 @@ export const translations = {
       },
       recommendations: {
         title: 'Рекомендация AI по оптимизации',
-        example: 'Ваша кампания "Летняя распродажа" показывает отличный CTR. Рекомендуем увеличить бюджет на 20% и расширить аудиторию на возрастную группу 25-34 года для повышения конверсий на 15-20%.'
       },
       imageAlt: {
         uploaded: 'Загруженное изображение для объявления',
@@ -1339,7 +1338,6 @@ export const translations = {
       },
       recommendations: {
         title: 'AI оңтайландыру ұсынысы',
-        example: 'Сіздің "Жазғы сату" кампанияңыз тамаша CTR көрсетеді. Бюджетті 20% арттыруды және конверсияны 15-20% арттыру үшін 25-34 жас аралығындағы аудиторияны кеңейтуді ұсынамыз.'
       },
       imageAlt: {
         uploaded: 'Жарнамаға жүктелген сурет',
@@ -2194,7 +2192,6 @@ export const translations = {
       },
       recommendations: {
         title: 'AI Optimization Recommendation',
-        example: 'Your "Summer Sale" campaign shows excellent CTR. We recommend increasing the budget by 20% and expanding the audience to the 25-34 age group to increase conversions by 15-20%.'
       },
       imageAlt: {
         uploaded: 'Uploaded image for ad',

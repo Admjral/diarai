@@ -1,158 +1,201 @@
 import axios, { AxiosInstance } from 'axios';
 import { log } from '../../utils/logger.js';
-import { UnifiedMessage, WhatsAppCredentials } from '../../types/index.js';
+import {
+  UnifiedMessage,
+  EvolutionInstance,
+  EvolutionQRCode,
+  EvolutionMessage,
+  EvolutionConnectionState,
+  EvolutionMessageStatus,
+  EvolutionCreateInstanceResponse,
+  EvolutionSendMessageResponse,
+} from '../../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
-interface WAHASession {
-  name: string;
-  status: string;
-  config?: {
-    webhooks?: Array<{ url: string; events: string[] }>;
-  };
-}
-
-interface WAHAMessage {
-  id: string;
-  timestamp: number;
-  from: string;
-  to: string;
-  body: string;
-  fromMe: boolean;
-  hasMedia: boolean;
-  mediaUrl?: string;
-  ack?: number;
-  chatId?: string;
-}
-
-interface WAHAQRCode {
-  value: string;
-  status: string;
-}
-
+/**
+ * WhatsApp Service using Evolution API
+ * Supports multi-session (each user gets their own instance)
+ */
 export class WhatsAppService {
   private client: AxiosInstance;
-  private wahaUrl: string;
+  private evolutionUrl: string;
+  private apiKey: string;
 
   constructor() {
-    this.wahaUrl = process.env.WAHA_URL || 'http://localhost:3001';
+    this.evolutionUrl = process.env.EVOLUTION_API_URL || process.env.WAHA_URL || 'http://localhost:8080';
+    this.apiKey = process.env.EVOLUTION_API_KEY || process.env.WAHA_API_KEY || '';
+
     this.client = axios.create({
-      baseURL: this.wahaUrl,
+      baseURL: this.evolutionUrl,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        ...(process.env.WAHA_API_KEY && {
-          'X-Api-Key': process.env.WAHA_API_KEY,
-        }),
+        apikey: this.apiKey,
       },
     });
 
-    log.info('WhatsApp service initialized', { wahaUrl: this.wahaUrl });
+    log.info('WhatsApp service initialized (Evolution API)', {
+      evolutionUrl: this.evolutionUrl,
+    });
   }
 
   /**
-   * Создать новую сессию WhatsApp
-   * WAHA Core поддерживает только сессию 'default'
+   * Создать новую WhatsApp instance (сессию)
+   * Multi-session: каждый пользователь получает уникальное имя instance
    */
-  async createSession(sessionId: string): Promise<WAHASession> {
-    // WAHA Core поддерживает только 'default' сессию
-    const wahaSessionName = 'default';
-    const webhookUrl = `${process.env.MESSENGER_SERVICE_URL || 'http://localhost:3004'}/webhook/whatsapp`;
+  async createSession(sessionId: string): Promise<EvolutionInstance> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+    const webhookUrl = `${process.env.MESSENGER_SERVICE_URL || 'http://localhost:3002'}/webhook/whatsapp`;
 
-    const sessionConfig = {
-      name: wahaSessionName,
-      config: {
-        webhooks: [
-          {
-            url: webhookUrl,
-            events: ['message', 'message.ack', 'session.status'],
-          },
+    const instanceConfig = {
+      instanceName,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS',
+      reject_call: true,
+      groups_ignore: false,
+      always_online: false,
+      read_messages: false,
+      read_status: false,
+      webhook: {
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: false,
+        events: [
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'CONNECTION_UPDATE',
+          'QRCODE_UPDATED',
+          'SEND_MESSAGE',
         ],
       },
     };
 
     try {
-      // Пробуем создать сессию
-      const response = await this.client.post('/api/sessions', sessionConfig);
-      log.info('WhatsApp session created', { sessionId, wahaSessionName });
-      return response.data;
-    } catch (error: any) {
-      // Если сессия уже существует - обновляем через PUT и запускаем
-      if (error?.response?.status === 422) {
-        log.info('WhatsApp session already exists, updating', { wahaSessionName });
-        try {
-          const updateResponse = await this.client.put(`/api/sessions/${wahaSessionName}`, sessionConfig);
-          // Запускаем сессию если она остановлена
-          await this.startSession(wahaSessionName);
-          return updateResponse.data;
-        } catch (updateError) {
-          log.error('Failed to update WhatsApp session', updateError, { wahaSessionName });
-          throw updateError;
-        }
-      }
-      log.error('Failed to create WhatsApp session', error, { sessionId });
-      throw error;
-    }
-  }
+      const response = await this.client.post<EvolutionCreateInstanceResponse>(
+        '/instance/create',
+        instanceConfig
+      );
+      log.info('WhatsApp instance created', { instanceName, sessionId });
 
-  /**
-   * Запустить остановленную сессию
-   */
-  async startSession(sessionId: string): Promise<void> {
-    try {
-      await this.client.post(`/api/sessions/${sessionId}/start`);
-      log.info('WhatsApp session started', { sessionId });
+      return {
+        instanceName: response.data.instance.instanceName,
+        instanceId: response.data.instance.instanceId,
+        status: 'qrcode' as EvolutionConnectionState,
+        serverUrl: this.evolutionUrl,
+        apikey: response.data.hash,
+      };
     } catch (error: any) {
-      // Игнорируем если сессия уже запущена
-      if (error?.response?.status !== 422) {
-        log.error('Failed to start WhatsApp session', error, { sessionId });
+      // Instance уже существует - получаем статус
+      if (
+        error?.response?.status === 403 ||
+        error?.response?.status === 400 ||
+        error?.response?.data?.message?.includes('already') ||
+        error?.response?.data?.message?.includes('exists')
+      ) {
+        log.info('Instance already exists, fetching status', { instanceName });
+        return this.getSessionStatus(sessionId);
       }
+      log.error('Failed to create WhatsApp instance', error, { sessionId });
+      throw error;
     }
   }
 
   /**
    * Получить QR код для авторизации
    */
-  async getQRCode(sessionId: string): Promise<WAHAQRCode> {
+  async getQRCode(sessionId: string): Promise<EvolutionQRCode> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
     try {
-      // WAHA Core: используем 'default' сессию
-      const wahaSession = 'default';
-      const response = await this.client.get(`/api/${wahaSession}/auth/qr`, {
-        params: { format: 'image' },
-        responseType: 'arraybuffer',
-      });
-      // Конвертируем бинарное изображение в base64
-      const base64 = Buffer.from(response.data).toString('base64');
-      return { value: base64, status: 'scan' };
-    } catch (error) {
+      const response = await this.client.get(`/instance/connect/${instanceName}`);
+
+      // Evolution API возвращает QR в разных форматах
+      const data = response.data;
+
+      return {
+        code: data.code || data.qrcode?.code || '',
+        base64: data.base64 || data.qrcode?.base64 || '',
+        pairingCode: data.pairingCode || data.qrcode?.pairingCode,
+        count: data.count || data.qrcode?.count || 0,
+      };
+    } catch (error: any) {
+      // Если instance уже подключен, QR не нужен
+      if (error?.response?.status === 404 || error?.response?.data?.message?.includes('connected')) {
+        log.info('Instance already connected, no QR needed', { sessionId });
+        return {
+          code: '',
+          base64: '',
+          count: 0,
+        };
+      }
       log.error('Failed to get QR code', error, { sessionId });
       throw error;
     }
   }
 
   /**
-   * Получить статус сессии
+   * Получить статус сессии/instance
    */
-  async getSessionStatus(sessionId: string): Promise<WAHASession> {
+  async getSessionStatus(sessionId: string): Promise<EvolutionInstance> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
     try {
-      // WAHA Core: используем 'default' сессию
-      const wahaSession = 'default';
-      const response = await this.client.get(`/api/sessions/${wahaSession}`);
-      return response.data;
-    } catch (error) {
+      const response = await this.client.get(`/instance/connectionState/${instanceName}`);
+
+      const state = response.data?.instance?.state || response.data?.state || 'close';
+
+      return {
+        instanceName,
+        instanceId: response.data?.instance?.instanceId || '',
+        status: state as EvolutionConnectionState,
+        serverUrl: this.evolutionUrl,
+        profileName: response.data?.instance?.profileName,
+        profilePictureUrl: response.data?.instance?.profilePictureUrl,
+      };
+    } catch (error: any) {
+      // Instance не существует
+      if (error?.response?.status === 404) {
+        return {
+          instanceName,
+          status: 'close' as EvolutionConnectionState,
+          serverUrl: this.evolutionUrl,
+        };
+      }
       log.error('Failed to get session status', error, { sessionId });
       throw error;
     }
   }
 
   /**
-   * Удалить сессию
+   * Удалить instance
    */
   async deleteSession(sessionId: string): Promise<void> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
     try {
-      await this.client.delete(`/api/sessions/${sessionId}`);
-      log.info('WhatsApp session deleted', { sessionId });
+      await this.client.delete(`/instance/delete/${instanceName}`);
+      log.info('WhatsApp instance deleted', { instanceName, sessionId });
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        log.info('Instance already deleted or not found', { instanceName });
+        return;
+      }
+      log.error('Failed to delete instance', error, { sessionId });
+      throw error;
+    }
+  }
+
+  /**
+   * Logout instance (отключить WhatsApp без удаления)
+   */
+  async logoutSession(sessionId: string): Promise<void> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
+    try {
+      await this.client.delete(`/instance/logout/${instanceName}`);
+      log.info('WhatsApp instance logged out', { instanceName });
     } catch (error) {
-      log.error('Failed to delete session', error, { sessionId });
+      log.error('Failed to logout instance', error, { sessionId });
       throw error;
     }
   }
@@ -165,25 +208,33 @@ export class WhatsAppService {
     chatId: string,
     text: string
   ): Promise<{ id: string }> {
-    try {
-      // WAHA Core: всегда используем 'default' сессию
-      const wahaSession = 'default';
-      // Форматируем chatId если нужно (добавляем @c.us)
-      const formattedChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+    const instanceName = this.sanitizeInstanceName(sessionId);
+    const formattedNumber = this.formatPhoneNumber(chatId);
 
-      const response = await this.client.post(`/api/sendText`, {
-        session: wahaSession,
-        chatId: formattedChatId,
-        text,
-      });
+    try {
+      const response = await this.client.post<EvolutionSendMessageResponse>(
+        `/message/sendText/${instanceName}`,
+        {
+          number: formattedNumber,
+          options: {
+            delay: 1200,
+            presence: 'composing',
+          },
+          textMessage: {
+            text,
+          },
+        }
+      );
+
+      const messageId = response.data?.key?.id || uuidv4();
 
       log.info('WhatsApp message sent', {
-        sessionId,
-        chatId: formattedChatId,
-        messageId: response.data.id,
+        instanceName,
+        chatId: formattedNumber,
+        messageId,
       });
 
-      return { id: response.data.id };
+      return { id: messageId };
     } catch (error) {
       log.error('Failed to send WhatsApp message', error, { sessionId, chatId });
       throw error;
@@ -199,25 +250,39 @@ export class WhatsAppService {
     mediaUrl: string,
     caption?: string
   ): Promise<{ id: string }> {
-    try {
-      // WAHA Core: всегда используем 'default' сессию
-      const wahaSession = 'default';
-      const formattedChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+    const instanceName = this.sanitizeInstanceName(sessionId);
+    const formattedNumber = this.formatPhoneNumber(chatId);
 
-      const response = await this.client.post(`/api/sendFile`, {
-        session: wahaSession,
-        chatId: formattedChatId,
-        file: { url: mediaUrl },
-        caption,
-      });
+    // Определяем тип медиа по URL
+    const mediaType = this.detectMediaType(mediaUrl);
+
+    try {
+      const response = await this.client.post<EvolutionSendMessageResponse>(
+        `/message/sendMedia/${instanceName}`,
+        {
+          number: formattedNumber,
+          options: {
+            delay: 1500,
+            presence: 'composing',
+          },
+          mediaMessage: {
+            mediatype: mediaType,
+            media: mediaUrl,
+            caption,
+          },
+        }
+      );
+
+      const messageId = response.data?.key?.id || uuidv4();
 
       log.info('WhatsApp media sent', {
-        sessionId,
-        chatId: formattedChatId,
-        messageId: response.data.id,
+        instanceName,
+        chatId: formattedNumber,
+        messageId,
+        mediaType,
       });
 
-      return { id: response.data.id };
+      return { id: messageId };
     } catch (error) {
       log.error('Failed to send WhatsApp media', error, { sessionId, chatId });
       throw error;
@@ -225,43 +290,81 @@ export class WhatsAppService {
   }
 
   /**
-   * Преобразовать WAHA сообщение в унифицированный формат
+   * Преобразовать Evolution API webhook message в унифицированный формат
    */
   parseWebhookMessage(
-    wahaMessage: WAHAMessage,
+    data: EvolutionMessage,
+    instanceName: string,
     userId: number
   ): UnifiedMessage {
-    // Извлекаем номер телефона из chatId (убираем @c.us/@g.us)
-    const messengerId = wahaMessage.from.split('@')[0];
+    // Извлекаем номер телефона из remoteJid
+    const remoteJid = data.key.remoteJid;
+    const messengerId = remoteJid.split('@')[0];
+
+    // Извлекаем текст из различных типов сообщений
+    let text = '';
+    if (data.message?.conversation) {
+      text = data.message.conversation;
+    } else if (data.message?.extendedTextMessage?.text) {
+      text = data.message.extendedTextMessage.text;
+    } else if (data.message?.imageMessage?.caption) {
+      text = data.message.imageMessage.caption;
+    } else if (data.message?.videoMessage?.caption) {
+      text = data.message.videoMessage.caption;
+    }
+
+    // Извлекаем медиа URLs
+    const mediaUrls: string[] = [];
+    if (data.message?.imageMessage?.url) {
+      mediaUrls.push(data.message.imageMessage.url);
+    }
+    if (data.message?.videoMessage?.url) {
+      mediaUrls.push(data.message.videoMessage.url);
+    }
+    if (data.message?.audioMessage?.url) {
+      mediaUrls.push(data.message.audioMessage.url);
+    }
+    if (data.message?.documentMessage?.url) {
+      mediaUrls.push(data.message.documentMessage.url);
+    }
+    if (data.message?.stickerMessage?.url) {
+      mediaUrls.push(data.message.stickerMessage.url);
+    }
 
     return {
-      id: wahaMessage.id || uuidv4(),
+      id: data.key.id || uuidv4(),
       messengerType: 'whatsapp',
       messengerId,
       userId,
-      text: wahaMessage.body || '',
-      mediaUrls: wahaMessage.mediaUrl ? [wahaMessage.mediaUrl] : undefined,
-      direction: wahaMessage.fromMe ? 'outbound' : 'inbound',
-      status: this.mapAckToStatus(wahaMessage.ack),
-      timestamp: new Date(wahaMessage.timestamp * 1000),
-      rawData: wahaMessage as unknown as Record<string, unknown>,
+      text: text || '',
+      mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+      senderName: data.pushName,
+      direction: data.key.fromMe ? 'outbound' : 'inbound',
+      status: this.mapStatusToUnified(data.status),
+      timestamp: data.messageTimestamp
+        ? new Date(data.messageTimestamp * 1000)
+        : new Date(),
+      rawData: data as unknown as Record<string, unknown>,
     };
   }
 
   /**
-   * Маппинг ack статуса WAHA на наш статус
+   * Маппинг статуса Evolution в унифицированный статус
    */
-  private mapAckToStatus(ack?: number): UnifiedMessage['status'] {
-    switch (ack) {
-      case -1:
+  private mapStatusToUnified(
+    status?: EvolutionMessageStatus
+  ): UnifiedMessage['status'] {
+    switch (status) {
+      case 'ERROR':
         return 'failed';
-      case 0:
+      case 'PENDING':
         return 'pending';
-      case 1:
+      case 'SERVER_ACK':
         return 'sent';
-      case 2:
+      case 'DELIVERY_ACK':
         return 'delivered';
-      case 3:
+      case 'READ':
+      case 'PLAYED':
         return 'read';
       default:
         return 'sent';
@@ -269,28 +372,136 @@ export class WhatsAppService {
   }
 
   /**
-   * Получить список сессий
+   * Маппинг статуса подключения Evolution в WAHA-совместимый формат
+   * Для обратной совместимости с frontend
    */
-  async listSessions(): Promise<WAHASession[]> {
+  mapConnectionStatus(state: EvolutionConnectionState): string {
+    switch (state) {
+      case 'open':
+        return 'WORKING';
+      case 'connecting':
+        return 'STARTING';
+      case 'qrcode':
+        return 'SCAN_QR_CODE';
+      case 'close':
+        return 'STOPPED';
+      default:
+        return 'UNKNOWN';
+    }
+  }
+
+  /**
+   * Проверить, подключен ли instance
+   */
+  isConnected(state: EvolutionConnectionState): boolean {
+    return state === 'open';
+  }
+
+  /**
+   * Санитизация имени instance (Evolution требует alphanumeric)
+   */
+  private sanitizeInstanceName(sessionId: string): string {
+    return sessionId.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
+  }
+
+  /**
+   * Форматирование номера телефона для Evolution API
+   */
+  private formatPhoneNumber(chatId: string): string {
+    // Убираем @c.us/@g.us суффикс если есть
+    let phone = chatId.split('@')[0];
+    // Убираем все нецифровые символы
+    phone = phone.replace(/\D/g, '');
+    return phone;
+  }
+
+  /**
+   * Определить тип медиа по URL
+   */
+  private detectMediaType(url: string): 'image' | 'video' | 'audio' | 'document' {
+    const lower = url.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp)/.test(lower)) {
+      return 'image';
+    }
+    if (/\.(mp4|avi|mov|webm)/.test(lower)) {
+      return 'video';
+    }
+    if (/\.(mp3|wav|ogg|aac|m4a)/.test(lower)) {
+      return 'audio';
+    }
+    return 'document';
+  }
+
+  /**
+   * Получить список всех instances
+   */
+  async listSessions(): Promise<EvolutionInstance[]> {
     try {
-      const response = await this.client.get('/api/sessions');
-      return response.data;
+      const response = await this.client.get('/instance/fetchInstances');
+      return (response.data || []).map((inst: any) => ({
+        instanceName: inst.instanceName || inst.instance?.instanceName,
+        instanceId: inst.instanceId || inst.instance?.instanceId,
+        status: inst.status || inst.instance?.status || 'close',
+        serverUrl: this.evolutionUrl,
+      }));
     } catch (error) {
-      log.error('Failed to list sessions', error);
+      log.error('Failed to list instances', error);
       throw error;
     }
   }
 
   /**
-   * Проверить здоровье WAHA
+   * Health check Evolution API
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.client.get('/api/sessions');
+      const response = await this.client.get('/');
       return response.status === 200;
     } catch (error) {
-      log.error('WAHA health check failed', error);
+      log.error('Evolution API health check failed', error);
       return false;
+    }
+  }
+
+  /**
+   * Установить webhook для конкретного instance
+   */
+  async setWebhook(sessionId: string, webhookUrl: string): Promise<void> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
+    try {
+      await this.client.post(`/webhook/set/${instanceName}`, {
+        enabled: true,
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: false,
+        events: [
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'CONNECTION_UPDATE',
+          'QRCODE_UPDATED',
+          'SEND_MESSAGE',
+        ],
+      });
+      log.info('Webhook set for instance', { instanceName, webhookUrl });
+    } catch (error) {
+      log.error('Failed to set webhook', error, { sessionId });
+      throw error;
+    }
+  }
+
+  /**
+   * Перезапустить instance
+   */
+  async restartSession(sessionId: string): Promise<void> {
+    const instanceName = this.sanitizeInstanceName(sessionId);
+
+    try {
+      await this.client.post(`/instance/restart/${instanceName}`);
+      log.info('WhatsApp instance restarted', { instanceName });
+    } catch (error) {
+      log.error('Failed to restart instance', error, { sessionId });
+      throw error;
     }
   }
 }
