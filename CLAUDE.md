@@ -331,3 +331,4 @@ curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstance
 17. **Удаление Railway домена** — `mutation { serviceDomainDelete(id: "DOMAIN_ID") }` через GraphQL API
 18. **Backend ↔ Messenger-service** — backend требует `MESSENGER_SERVICE_URL` и `MESSENGER_API_KEY` для связи с messenger-service
 19. **Evolution API статусы** — Evolution возвращает `open/close/qrcode`, но frontend ожидает WAHA-совместимые `WORKING/STOPPED/SCAN_QR_CODE`. Маппинг в `session.routes.ts`
+20. **Генерация изображений** — использует `gemini-2.0-flash-exp-image-generation`, файл `openai.service.ts` (название осталось от OpenAI, но внутри Gemini)
