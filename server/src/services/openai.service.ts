@@ -353,6 +353,14 @@ async function tryGenerateImage(apiKey: string, model: string, prompt: string): 
 
     const data: any = await response.json();
 
+    // Логируем структуру ответа для диагностики
+    log.info(`Ответ от ${model}`, {
+      hasCandidates: !!data.candidates,
+      candidatesCount: data.candidates?.length || 0,
+      blockReason: data.promptFeedback?.blockReason,
+      finishReason: data.candidates?.[0]?.finishReason,
+    });
+
     // Ищем изображение в ответе
     for (const candidate of data.candidates || []) {
       for (const part of candidate.content?.parts || []) {
@@ -370,6 +378,11 @@ async function tryGenerateImage(apiKey: string, model: string, prompt: string): 
     // Проверяем блокировку
     if (data.promptFeedback?.blockReason) {
       log.warn('Контент заблокирован', { model, reason: data.promptFeedback.blockReason });
+    } else {
+      // Логируем если нет изображения и нет блокировки
+      log.warn(`Нет изображения в ответе ${model}`, {
+        partsTypes: data.candidates?.[0]?.content?.parts?.map((p: any) => Object.keys(p)) || [],
+      });
     }
 
     return null;
