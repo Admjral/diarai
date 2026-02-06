@@ -9,6 +9,7 @@
 | backend | `46fb55af-941c-420c-9bdf-d0936055fdec` |
 | frontend | `b120264f-9a6e-4aa7-855c-d25872303a5b` |
 | messenger-service | `1d44198e-c2d3-450a-a13e-a893c7693367` |
+| evolution-api | `9d966ef6-faf4-4f2a-80f1-536ea51c93b4` |
 | Postgres | `34c220c0-693c-4900-8dd9-a5789c5e888c` |
 | environment | `e0ac84af-4a63-44db-8d83-7e4c2140f6ed` |
 | project | `9359e0b8-249a-4fbd-93c0-d67a6139f954` |
@@ -19,6 +20,8 @@
 |--------|-----|
 | Backend | `https://backend-production-be6a0.up.railway.app` |
 | Frontend | `https://app.diar.pro` |
+| Evolution API | `https://evolution-api-production-76ab.up.railway.app` |
+| Messenger Service | `https://messenger-service-production-b9c4.up.railway.app` |
 
 ---
 
@@ -202,6 +205,111 @@ curl -s -X POST "https://backboard.railway.app/graphql/v2" \
 
 ---
 
+## WhatsApp Integration (Evolution API)
+
+**ВАЖНО:** Проект использует **Evolution API**, НЕ WAHA!
+
+### Почему Evolution API?
+- Multi-session: каждый пользователь = своя WhatsApp сессия
+- WAHA Core поддерживал только 1 сессию 'default'
+- Evolution API бесплатный open-source
+
+### Переменные окружения
+```env
+EVOLUTION_API_URL=http://evolution-api:8080
+EVOLUTION_API_KEY=your-api-key
+```
+
+### Docker
+```bash
+docker run -d -p 8080:8080 \
+  -e AUTHENTICATION_API_KEY=your-key \
+  atendai/evolution-api:latest
+```
+
+### API Endpoints (Evolution vs WAHA)
+| Операция | Evolution API | WAHA (deprecated) |
+|----------|---------------|-------------------|
+| Создать сессию | `POST /instance/create` | `POST /api/sessions` |
+| QR код | `GET /instance/connect/{instance}` | `GET /api/{session}/auth/qr` |
+| Статус | `GET /instance/connectionState/{instance}` | `GET /api/sessions/{session}` |
+| Отправить текст | `POST /message/sendText/{instance}` | `POST /api/sendText` |
+
+### Webhook события
+- `MESSAGES_UPSERT` — входящее сообщение
+- `MESSAGES_UPDATE` — статус доставки
+- `CONNECTION_UPDATE` — статус подключения
+- `QRCODE_UPDATED` — обновление QR кода
+
+### Файлы
+- `messenger-service/src/channels/whatsapp/whatsapp.service.ts`
+- `messenger-service/src/routes/webhook.routes.ts`
+- `messenger-service/docker-compose.yml`
+
+### Формат номера телефона
+Evolution API использует **только цифры** (без `@c.us`):
+```typescript
+// Правильно
+number: "77001234567"
+
+// Неправильно (WAHA формат)
+chatId: "77001234567@c.us"
+```
+
+### Маппинг статусов подключения
+Frontend ожидает WAHA-совместимые статусы. Evolution → WAHA маппинг:
+| Evolution | WAHA (для frontend) | isConnected |
+|-----------|---------------------|-------------|
+| `open` | `WORKING` | true |
+| `connecting` | `STARTING` | false |
+| `qrcode` | `SCAN_QR_CODE` | false |
+| `close` | `STOPPED` | false |
+
+### Миграция с WAHA
+1. Существующие пользователи с сессией 'default' потеряют подключение
+2. Нужно повторно отсканировать QR код
+3. Новые сессии создаются как `user-{userId}-wa` (sanitized)
+
+### Рабочая конфигурация Evolution API на Railway
+
+**Обязательные переменные:**
+```env
+# Аутентификация
+AUTHENTICATION_TYPE=apikey
+AUTHENTICATION_API_KEY=your-secret-key
+
+# База данных (использует общий Postgres)
+DATABASE_PROVIDER=postgresql
+DATABASE_CONNECTION_URI=postgresql://user:pass@postgres.railway.internal:5432/railway?schema=evolution
+
+# Кеширование (без Redis)
+CACHE_REDIS_ENABLED=false
+CACHE_LOCAL_ENABLED=true
+
+# Webhook
+WEBHOOK_GLOBAL_URL=https://messenger-service-production-b9c4.up.railway.app/webhook/whatsapp
+WEBHOOK_GLOBAL_ENABLED=true
+WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+WEBHOOK_EVENTS_QRCODE_UPDATED=true
+
+# Прочее
+PORT=8080
+LOG_LEVEL=ERROR
+```
+
+### Проверка работы
+```bash
+# Health check
+curl https://evolution-api-production-76ab.up.railway.app/
+
+# Список instances (с API ключом)
+curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstances \
+  -H "apikey: your-secret-key"
+```
+
+---
+
 ## Важные уроки
 
 1. **Auth middleware** уже применён в `index.ts` - роуты НЕ должны импортировать его повторно
@@ -213,3 +321,13 @@ curl -s -X POST "https://backboard.railway.app/graphql/v2" \
 7. **Wallet top-up** использует QR-код, не Kaspi API - если видишь ошибку про KASPI_MERCHANT_ID, frontend устарел
 8. **AI использует Gemini**, не OpenAI - если ошибка про OpenAI API key, проверь GEMINI_API_KEY
 9. **Два деплоя при push** - нормально, оба сервиса подключены к одному репо
+10. **WhatsApp использует Evolution API**, не WAHA - если ошибка про WAHA_URL, обнови на EVOLUTION_API_URL
+11. **Evolution API multi-session** — каждый пользователь получает свой instance, не 'default'
+12. **Формат телефона в Evolution** — только цифры без @c.us (77001234567, не 77001234567@c.us)
+13. **Evolution API на Railway** — требует Docker image `atendai/evolution-api:latest`
+14. **Дублирующиеся домены** — при создании нового домена старый не удаляется автоматически
+15. **Evolution API DATABASE_PROVIDER** — обязательно указать `DATABASE_PROVIDER=postgresql` и `DATABASE_CONNECTION_URI`
+16. **Evolution API Redis** — по умолчанию требует Redis, но можно отключить: `CACHE_REDIS_ENABLED=false`, `CACHE_LOCAL_ENABLED=true`
+17. **Удаление Railway домена** — `mutation { serviceDomainDelete(id: "DOMAIN_ID") }` через GraphQL API
+18. **Backend ↔ Messenger-service** — backend требует `MESSENGER_SERVICE_URL` и `MESSENGER_API_KEY` для связи с messenger-service
+19. **Evolution API статусы** — Evolution возвращает `open/close/qrcode`, но frontend ожидает WAHA-совместимые `WORKING/STOPPED/SCAN_QR_CODE`. Маппинг в `session.routes.ts`
