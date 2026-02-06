@@ -85,12 +85,40 @@ class LocalStorageService {
   }
 
   /**
-   * Загрузить файл из URL (скачать и сохранить)
+   * Загрузить файл из URL или base64 data URL (скачать и сохранить)
    */
   async uploadFromUrl(
     url: string,
     subfolder?: string
   ): Promise<{ url: string; filename: string; size: number }> {
+    // Обработка base64 data URL (data:image/png;base64,...)
+    if (url.startsWith('data:')) {
+      const matches = url.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        throw new Error('Invalid base64 data URL format');
+      }
+
+      const mimeType = matches[1];
+      const base64Data = matches[2];
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      // Определяем расширение по mime type
+      const extMap: Record<string, string> = {
+        'image/jpeg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'application/pdf': '.pdf',
+      };
+      const ext = extMap[mimeType] || '.bin';
+
+      log.info('Uploading from base64 data URL', { mimeType, sizeKB: Math.round(buffer.length / 1024) });
+
+      const originalName = `ai-generated${ext}`;
+      return this.uploadBuffer(buffer, originalName, subfolder);
+    }
+
+    // Обработка HTTP/HTTPS URL
     const response = await fetch(url);
 
     if (!response.ok) {
