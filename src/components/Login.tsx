@@ -152,11 +152,47 @@ interface LoginProps {
   onLogin: (name: string) => void;
 }
 
+// Форматирование телефона в маску +7(XXX)XXX-XX-XX
+function formatPhoneMask(value: string): string {
+  // Убираем всё кроме цифр
+  let digits = value.replace(/\D/g, '');
+
+  // Если начинается с 8, заменяем на 7
+  if (digits.startsWith('8')) {
+    digits = '7' + digits.slice(1);
+  }
+  // Если не начинается с 7, добавляем 7
+  if (digits.length > 0 && !digits.startsWith('7')) {
+    digits = '7' + digits;
+  }
+
+  // Ограничиваем 11 цифрами
+  digits = digits.slice(0, 11);
+
+  // Формируем маску
+  if (digits.length === 0) return '';
+  if (digits.length <= 1) return '+7';
+  if (digits.length <= 4) return `+7(${digits.slice(1)}`;
+  if (digits.length <= 7) return `+7(${digits.slice(1, 4)})${digits.slice(4)}`;
+  if (digits.length <= 9) return `+7(${digits.slice(1, 4)})${digits.slice(4, 7)}-${digits.slice(7)}`;
+  return `+7(${digits.slice(1, 4)})${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9)}`;
+}
+
+// Извлечение чистого номера: +7(777)777-77-77 → +77777777777
+function extractRawPhone(formatted: string): string {
+  const digits = formatted.replace(/\D/g, '');
+  return digits.length > 0 ? `+${digits}` : '';
+}
+
 export const Login = memo(function Login({ onLogin }: LoginProps) {
   const { signIn, signUp, resetPassword } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(''); // Форматированный: +7(777)777-77-77
   const [password, setPassword] = useState('');
+
+  const handlePhoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhone(formatPhoneMask(e.target.value));
+  }, []);
   const [agreed, setAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -202,10 +238,12 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
       return;
     }
 
+    const rawPhone = extractRawPhone(phone);
+
     setIsLoading(true);
 
     if (isSignUp) {
-      const { error: signUpError } = await signUp(phone, password);
+      const { error: signUpError } = await signUp(rawPhone, password);
       if (signUpError) {
         setError(getErrorMessage(signUpError.message));
         setIsLoading(false);
@@ -214,10 +252,10 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
         setSuccessMessage(t.login.success.signUp);
         setIsLoading(false);
         setIsLoadingProfile(true);
-        onLogin(phone.slice(-4));
+        onLogin(rawPhone.slice(-4));
       }
     } else {
-      const { error: signInError } = await signIn(phone, password);
+      const { error: signInError } = await signIn(rawPhone, password);
       if (signInError) {
         setError(getErrorMessage(signInError.message));
         setIsLoading(false);
@@ -226,7 +264,7 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
         setSuccessMessage(t.login.success.signIn);
         setIsLoading(false);
         setIsLoadingProfile(true);
-        onLogin(phone.slice(-4));
+        onLogin(rawPhone.slice(-4));
       }
     }
   }, [phone, password, agreed, isSignUp, signUp, signIn, getErrorMessage, onLogin, t]);
@@ -242,7 +280,7 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
     }
 
     setIsLoading(true);
-    const { error: resetError } = await resetPassword(phone);
+    const { error: resetError } = await resetPassword(extractRawPhone(phone));
 
     if (resetError) {
       setError(getErrorMessage(resetError.message));
@@ -326,8 +364,8 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder={t.login.forgotPasswordPlaceholder}
+                onChange={handlePhoneChange}
+                placeholder="+7(___) ___-__-__"
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
                 required
               />
@@ -360,8 +398,8 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder={t.login.phonePlaceholder}
+                onChange={handlePhoneChange}
+                placeholder="+7(___) ___-__-__"
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
               />
             </div>
