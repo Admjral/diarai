@@ -88,7 +88,19 @@ export const translations = {
       activeCampaigns: 'Активных кампаний',
       recentActions: 'Последние действия',
       noData: 'Нет данных',
-      noRecentActivity: 'Нет последних действий'
+      noRecentActivity: 'Нет последних действий',
+      howToStart: 'Как начать',
+      welcomeBanner: {
+        title: 'Добро пожаловать в DIAR!',
+        subtitle: 'Три простых шага для запуска рекламы:',
+        step1: 'Пополните кошелёк',
+        step2: 'Создайте рекламную кампанию с AI',
+        step3: 'Отслеживайте результаты в CRM',
+        topUp: 'Пополнить',
+        createCampaign: 'Создать кампанию',
+        dismiss: 'Скрыть',
+      },
+      emptyKpi: 'Здесь будет статистика ваших рекламных кампаний. Создайте первую кампанию, чтобы начать получать лиды и продажи.',
     },
     // CRM
     crm: {
@@ -448,21 +460,40 @@ export const translations = {
       saving: {
         saving: 'Сохранение...',
         saveChanges: 'Сохранить изменения'
-      }
+      },
+      platformHints: {
+        'Instagram': 'Визуальная реклама, молодая аудитория',
+        'Facebook': 'Широкая аудитория, все возрасты',
+        'Google Ads': 'Реклама в поиске, высокая конверсия',
+        'TikTok': 'Видео-реклама, молодёжь',
+        'YouTube': 'Видео-реклама, широкий охват',
+      },
+      budgetPeriodHint: {
+        week: 'Быстрый тест эффективности',
+        month: 'Стабильный результат',
+        custom: 'Свой срок кампании',
+      },
+      descriptionHint: 'Опишите ваш товар или услугу — AI подберёт аудиторию. Например: Доставка цветов по Алматы, свежие букеты от 5000₸',
+      budgetConfirm: {
+        title: 'Подтвердите создание кампании',
+        message: 'С вашего кошелька будет зарезервировано {amount}₸ на кампанию «{name}» на {days} дней.',
+        confirm: 'Подтвердить',
+        cancel: 'Отмена',
+      },
     },
     // Onboarding
     onboarding: {
       screen1: {
-        title: 'AI Marketing CRM для бизнеса',
-        description: 'Умная платформа для управления маркетингом и продажами'
+        title: 'AI сам создаст рекламу',
+        description: 'AI подберёт аудиторию и создаст рекламу для вашего бизнеса — вам нужно только описать товар или услугу'
       },
       screen2: {
-        title: 'Всё в одном месте',
-        description: 'Создавай контент, веди CRM, запускай рекламу, анализируй продажи'
+        title: '5 платформ в одном месте',
+        description: 'Instagram, Facebook, Google, TikTok, YouTube — запускайте рекламу на всех площадках из одного окна'
       },
       screen3: {
-        title: 'Готовы начать?',
-        description: 'Автоматизируйте маркетинг с помощью искусственного интеллекта'
+        title: 'Лиды и продажи в реальном времени',
+        description: 'CRM система покажет все заявки, продажи и конверсию — вы всегда знаете, как работает реклама'
       },
       continue: 'Продолжить',
       next: 'Далее'
@@ -788,13 +819,15 @@ export const translations = {
       paymentSuccess: 'Платеж успешно обработан. Кошелек будет пополнен в ближайшее время.',
       paymentCancelled: 'Оплата отменена',
       errorMessages: {
-        serverConnection: 'Не удалось подключиться к серверу. Убедитесь, что сервер запущен.',
+        serverConnection: 'Не удалось подключиться к серверу. Попробуйте через минуту.',
         userNotFound: 'Пользователь не найден. Пожалуйста, войдите заново.',
         authError: 'Ошибка аутентификации. Пожалуйста, войдите заново.',
-        prismaModelNotFound: 'Модель Wallet не найдена в Prisma Client. Запустите: cd server && npm run prisma:generate',
-        genericError: 'Ошибка при загрузке кошелька. Проверьте логи сервера.',
-        connectionError: 'Не удалось загрузить кошелек. Проверьте подключение к серверу.'
-      }
+        prismaModelNotFound: 'Временная ошибка сервера. Попробуйте через минуту или обратитесь в техподдержку.',
+        genericError: 'Временная ошибка сервера. Попробуйте через минуту или обратитесь в техподдержку.',
+        connectionError: 'Не удалось загрузить кошелек. Проверьте интернет-соединение и попробуйте снова.'
+      },
+      emptyWalletHint: 'Кошелёк нужен для запуска рекламных кампаний. Минимальный бюджет кампании — 1 000₸. Рекомендуемый бюджет для начала — от 5 000₸.',
+      emptyWalletAction: 'Пополнить кошелёк',
     },
     // Integrations
     integrations: {
@@ -999,7 +1032,19 @@ export const translations = {
       activeCampaigns: 'Белсенді кампаниялар',
       recentActions: 'Соңғы әрекеттер',
       noData: 'Деректер жоқ',
-      noRecentActivity: 'Соңғы әрекеттер жоқ'
+      noRecentActivity: 'Соңғы әрекеттер жоқ',
+      howToStart: 'Қалай бастау',
+      welcomeBanner: {
+        title: 'DIAR-ға қош келдіңіз!',
+        subtitle: 'Жарнаманы іске қосудың үш қарапайым қадамы:',
+        step1: 'Әмиянды толтырыңыз',
+        step2: 'AI көмегімен жарнама кампаниясын жасаңыз',
+        step3: 'CRM-де нәтижелерді бақылаңыз',
+        topUp: 'Толтыру',
+        createCampaign: 'Кампания жасау',
+        dismiss: 'Жасыру',
+      },
+      emptyKpi: 'Мұнда жарнама кампанияларыңыздың статистикасы көрсетіледі. Лидтер мен сатуды алу үшін бірінші кампанияңызды жасаңыз.',
     },
     // CRM
     crm: {
@@ -1358,21 +1403,40 @@ export const translations = {
       saving: {
         saving: 'Сақталуда...',
         saveChanges: 'Өзгерістерді сақтау'
-      }
+      },
+      platformHints: {
+        'Instagram': 'Визуалды жарнама, жас аудитория',
+        'Facebook': 'Кең аудитория, барлық жас',
+        'Google Ads': 'Іздеу жарнамасы, жоғары конверсия',
+        'TikTok': 'Видео-жарнама, жастар',
+        'YouTube': 'Видео-жарнама, кең қамту',
+      },
+      budgetPeriodHint: {
+        week: 'Тиімділікті жылдам тексеру',
+        month: 'Тұрақты нәтиже',
+        custom: 'Өз кампания мерзімі',
+      },
+      descriptionHint: 'Тауарыңызды немесе қызметіңізді сипаттаңыз — AI аудиторияны таңдайды. Мысалы: Алматы бойынша гүл жеткізу, 5000₸-ден бастап',
+      budgetConfirm: {
+        title: 'Кампания жасауды растаңыз',
+        message: 'Сіздің әмияныңыздан «{name}» кампаниясына {days} күнге {amount}₸ резервтеледі.',
+        confirm: 'Растау',
+        cancel: 'Бас тарту',
+      },
     },
     // Onboarding
     onboarding: {
       screen1: {
-        title: 'Бизнес үшін AI Marketing CRM',
-        description: 'Маркетинг пен сатуды басқаруға арналған ақылды платформа'
+        title: 'AI өзі жарнама жасайды',
+        description: 'AI аудиторияны таңдап, бизнесіңіз үшін жарнама жасайды — тек тауарды немесе қызметті сипаттаңыз'
       },
       screen2: {
-        title: 'Барлығы бір жерде',
-        description: 'Контент жасаңыз, CRM басқарыңыз, жарнама іске қосыңыз, сатуды талдаңыз'
+        title: '5 платформа бір жерде',
+        description: 'Instagram, Facebook, Google, TikTok, YouTube — барлық алаңдарда жарнаманы бір терезеден іске қосыңыз'
       },
       screen3: {
-        title: 'Бастауға дайынсыз ба?',
-        description: 'Жасанды интеллект көмегімен маркетингті автоматтандырыңыз'
+        title: 'Лидтер мен сату нақты уақытта',
+        description: 'CRM жүйесі барлық өтінімдерді, сатуларды және конверсияны көрсетеді — жарнаманың қалай жұмыс істейтінін әрқашан білесіз'
       },
       continue: 'Жалғастыру',
       next: 'Келесі'
@@ -1650,13 +1714,15 @@ export const translations = {
       paymentSuccess: 'Төлем сәтті өңделді. Әмиян жақын арада толтырылады.',
       paymentCancelled: 'Төлем бас тартылды',
       errorMessages: {
-        serverConnection: 'Серверге қосылу мүмкін болмады. Сервер іске қосылғанына көз жеткізіңіз.',
+        serverConnection: 'Серверге қосылу мүмкін болмады. Бір минуттан кейін қайталаңыз.',
         userNotFound: 'Пайдаланушы табылмады. Қайта кіріңіз.',
         authError: 'Аутентификация қатесі. Қайта кіріңіз.',
-        prismaModelNotFound: 'Prisma Client-те Wallet моделі табылмады. Орындаңыз: cd server && npm run prisma:generate',
-        genericError: 'Әмиянды жүктеу қатесі. Сервер журналдарын тексеріңіз.',
-        connectionError: 'Әмиянды жүктеу мүмкін болмады. Серверге қосылуды тексеріңіз.'
-      }
+        prismaModelNotFound: 'Уақытша сервер қатесі. Бір минуттан кейін қайталаңыз немесе техқолдауға хабарласыңыз.',
+        genericError: 'Уақытша сервер қатесі. Бір минуттан кейін қайталаңыз немесе техқолдауға хабарласыңыз.',
+        connectionError: 'Әмиянды жүктеу мүмкін болмады. Интернет байланысын тексеріп, қайталаңыз.'
+      },
+      emptyWalletHint: 'Жарнама кампанияларын іске қосу үшін әмиян қажет. Кампанияның ең аз бюджеті — 1 000₸. Бастау үшін ұсынылатын бюджет — 5 000₸-ден.',
+      emptyWalletAction: 'Әмиянды толтыру',
     },
     // Integrations
     integrations: {
@@ -1861,7 +1927,19 @@ export const translations = {
       activeCampaigns: 'Active campaigns',
       recentActions: 'Recent actions',
       noData: 'No data',
-      noRecentActivity: 'No recent activity'
+      noRecentActivity: 'No recent activity',
+      howToStart: 'How to start',
+      welcomeBanner: {
+        title: 'Welcome to DIAR!',
+        subtitle: 'Three simple steps to launch advertising:',
+        step1: 'Top up your wallet',
+        step2: 'Create an ad campaign with AI',
+        step3: 'Track results in CRM',
+        topUp: 'Top up',
+        createCampaign: 'Create campaign',
+        dismiss: 'Dismiss',
+      },
+      emptyKpi: 'Your campaign statistics will appear here. Create your first campaign to start getting leads and sales.',
     },
     // CRM
     crm: {
@@ -2220,21 +2298,40 @@ export const translations = {
       saving: {
         saving: 'Saving...',
         saveChanges: 'Save changes'
-      }
+      },
+      platformHints: {
+        'Instagram': 'Visual ads, younger audience',
+        'Facebook': 'Broad audience, all ages',
+        'Google Ads': 'Search ads, high conversion',
+        'TikTok': 'Video ads, youth',
+        'YouTube': 'Video ads, wide reach',
+      },
+      budgetPeriodHint: {
+        week: 'Quick effectiveness test',
+        month: 'Stable results',
+        custom: 'Custom campaign duration',
+      },
+      descriptionHint: 'Describe your product or service — AI will find the audience. E.g.: Flower delivery in Almaty, fresh bouquets from 5000₸',
+      budgetConfirm: {
+        title: 'Confirm campaign creation',
+        message: '{amount}₸ will be reserved from your wallet for campaign "{name}" for {days} days.',
+        confirm: 'Confirm',
+        cancel: 'Cancel',
+      },
     },
     // Onboarding
     onboarding: {
       screen1: {
-        title: 'AI Marketing CRM for Business',
-        description: 'Smart platform for marketing and sales management'
+        title: 'AI creates ads for you',
+        description: 'AI will find the right audience and create ads for your business — just describe your product or service'
       },
       screen2: {
-        title: 'Everything in one place',
-        description: 'Create content, manage CRM, launch ads, analyze sales'
+        title: '5 platforms in one place',
+        description: 'Instagram, Facebook, Google, TikTok, YouTube — launch ads on all platforms from a single window'
       },
       screen3: {
-        title: 'Ready to start?',
-        description: 'Automate marketing with artificial intelligence'
+        title: 'Leads and sales in real time',
+        description: 'CRM system shows all leads, sales, and conversion — always know how your ads perform'
       },
       continue: 'Continue',
       next: 'Next'
@@ -2509,13 +2606,15 @@ export const translations = {
       paymentSuccess: 'Payment processed successfully. Wallet will be topped up shortly.',
       paymentCancelled: 'Payment cancelled',
       errorMessages: {
-        serverConnection: 'Failed to connect to server. Make sure server is running.',
+        serverConnection: 'Failed to connect to server. Please try again in a minute.',
         userNotFound: 'User not found. Please sign in again.',
         authError: 'Authentication error. Please sign in again.',
-        prismaModelNotFound: 'Wallet model not found in Prisma Client. Run: cd server && npm run prisma:generate',
-        genericError: 'Error loading wallet. Check server logs.',
-        connectionError: 'Failed to load wallet. Check server connection.'
-      }
+        prismaModelNotFound: 'Temporary server error. Please try again in a minute or contact support.',
+        genericError: 'Temporary server error. Please try again in a minute or contact support.',
+        connectionError: 'Failed to load wallet. Check your internet connection and try again.'
+      },
+      emptyWalletHint: 'Wallet is needed to launch ad campaigns. Minimum campaign budget is 1,000₸. Recommended starting budget is from 5,000₸.',
+      emptyWalletAction: 'Top up wallet',
     },
     // Integrations
     integrations: {

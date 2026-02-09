@@ -76,14 +76,8 @@ export function Wallet({ showToast }: WalletProps) {
 
           if (isWalletModelError) {
             errorMessage = t.wallet.errorMessages.prismaModelNotFound;
-          } else if (errorDetails?.message) {
-            errorMessage = `Ошибка сервера: ${errorDetails.message}`;
-          } else if (serverErrorData?.details?.message) {
-            errorMessage = `Ошибка сервера: ${serverErrorData.details.message}`;
-          } else if (serverErrorData?.error) {
-            errorMessage = serverErrorData.error;
           } else {
-            errorMessage = error.message || t.wallet.errorMessages.genericError;
+            errorMessage = t.wallet.errorMessages.genericError;
           }
         } else if (error.message?.includes('Unknown model') || error.message?.includes('Wallet')) {
           errorMessage = t.wallet.errorMessages.prismaModelNotFound;
@@ -427,6 +421,15 @@ export function Wallet({ showToast }: WalletProps) {
         </div>
       </div>
 
+      {/* Empty wallet hint */}
+      {topUpStep === 'idle' && parseFloat(wallet.balance) === 0 && (
+        <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+          <p className="text-blue-300 text-xs sm:text-sm leading-relaxed">
+            {t.wallet.emptyWalletHint}
+          </p>
+        </div>
+      )}
+
       {/* Top-up button or flow */}
       {topUpStep === 'idle' ? (
         <button
@@ -437,7 +440,7 @@ export function Wallet({ showToast }: WalletProps) {
           className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium"
         >
           <Plus className="w-5 h-5 flex-shrink-0" />
-          <span className="text-sm sm:text-base">Пополнить</span>
+          <span className="text-sm sm:text-base">{t.wallet.emptyWalletAction || t.wallet.addFunds}</span>
         </button>
       ) : (
         renderTopUpUI()

@@ -1,4 +1,4 @@
-import { Brain, Feather, Rocket, Users, TrendingUp, DollarSign, Target, Sparkles, Menu, Settings, LogOut, Plus, FileText, Image as ImageIcon, Loader2, MessageSquare, Shield, X, Bell, Globe, Inbox } from 'lucide-react';
+import { Brain, Feather, Rocket, Users, TrendingUp, DollarSign, Target, Sparkles, Menu, Settings, LogOut, Plus, FileText, Image as ImageIcon, Loader2, MessageSquare, Shield, X, Bell, Globe, Inbox, HelpCircle, WalletIcon, BarChart3 } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, memo, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,6 +23,7 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(() => localStorage.getItem('diar_welcome_dismissed') === 'true');
   const { signOut } = useAuth();
 
   // Загрузка данных дашборда
@@ -85,6 +86,16 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
       setIsSigningOut(false);
     }
   }, [signOut, onNavigate, showToast]);
+
+  const handleDismissWelcome = useCallback(() => {
+    setWelcomeDismissed(true);
+    localStorage.setItem('diar_welcome_dismissed', 'true');
+  }, []);
+
+  const handleShowWelcome = useCallback(() => {
+    setWelcomeDismissed(false);
+    localStorage.removeItem('diar_welcome_dismissed');
+  }, []);
 
   const handleNavigateToSubscription = useCallback(() => {
     onNavigate('subscription');
@@ -201,6 +212,14 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
               >
                 <MessageSquare className="w-4 h-4" />
                 <span>{t.dashboard.support}</span>
+              </button>
+              <button
+                onClick={handleShowWelcome}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 transition-colors"
+                title={t.dashboard.howToStart}
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>{t.dashboard.howToStart}</span>
               </button>
 
               <button
@@ -371,6 +390,16 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
                     <button
                       onClick={() => {
                         setMobileMenuOpen(false);
+                        handleShowWelcome();
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 text-blue-400"
+                    >
+                      <HelpCircle className="w-5 h-5" />
+                      <span>{t.dashboard.howToStart}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
                         handleNavigateToSubscription();
                       }}
                       className={`w-full px-4 py-3 text-left hover:bg-slate-700 flex items-center gap-3 ${
@@ -466,6 +495,50 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
           <p className="text-gray-400">{t.dashboard.manageBusiness}</p>
         </div>
 
+        {/* Welcome Banner for new/returning users */}
+        {!welcomeDismissed && (
+          <div className="mb-8 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="text-white text-lg font-semibold mb-2">{t.dashboard.welcomeBanner.title}</h3>
+                <p className="text-gray-400 mb-4">{t.dashboard.welcomeBanner.subtitle}</p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-sm font-bold">1</span>
+                    <span className="text-gray-300">{t.dashboard.welcomeBanner.step1}</span>
+                    <button
+                      onClick={() => { handleDismissWelcome(); /* Wallet is on same page, scroll to it */ }}
+                      className="ml-auto px-3 py-1.5 text-xs bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-lg hover:from-yellow-500 hover:to-amber-600 transition-all font-medium"
+                    >
+                      {t.dashboard.welcomeBanner.topUp}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-sm font-bold">2</span>
+                    <span className="text-gray-300">{t.dashboard.welcomeBanner.step2}</span>
+                    <button
+                      onClick={() => { handleDismissWelcome(); onNavigate('ai-advertising'); }}
+                      className="ml-auto px-3 py-1.5 text-xs bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg hover:from-pink-600 hover:to-purple-600 transition-all font-medium"
+                    >
+                      {t.dashboard.welcomeBanner.createCampaign}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-sm font-bold">3</span>
+                    <span className="text-gray-300">{t.dashboard.welcomeBanner.step3}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleDismissWelcome}
+                className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Main Blocks */}
         <div className="mb-8">
           <h2 className="text-white mb-6">{t.dashboard.mainTools}</h2>
@@ -509,6 +582,16 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
             </div>
           ))}
         </div>
+
+        {/* Empty KPI hint for new users */}
+        {!loading && dashboardData && kpis.every(k => k.value === '0' || k.value === '₸0' || k.value === '0.0%') && (
+          <div className="mb-4 px-4 py-3 bg-slate-800/30 border border-slate-700/50 rounded-xl">
+            <p className="text-gray-500 text-sm flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 flex-shrink-0" />
+              {t.dashboard.emptyKpi}
+            </p>
+          </div>
+        )}
 
         {/* AI Insights */}
         {loading ? (

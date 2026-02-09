@@ -395,6 +395,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [budgetConfirmOpen, setBudgetConfirmOpen] = useState(false);
+  const [pendingCampaignData, setPendingCampaignData] = useState<CampaignFormData | null>(null);
   const availablePlatforms = ['Instagram', 'Facebook', 'Google Ads', 'TikTok', 'YouTube'];
   
   // Состояния для поиска, фильтрации, сортировки и пагинации
@@ -1077,16 +1079,23 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
     }
   };
 
-  const handleCreateCampaign = async (data: CampaignFormData) => {
+  const handleCreateCampaignWithConfirm = (data: CampaignFormData) => {
     // Валидация перед отправкой
     const validationErrors = validateCampaignForm(data);
     if (validationErrors) {
-      // Устанавливаем ошибки в форму
       Object.keys(validationErrors).forEach((key) => {
         createForm.setError(key as keyof CampaignFormData, validationErrors[key]);
       });
       return;
     }
+    // Show budget confirmation dialog
+    setPendingCampaignData(data);
+    setBudgetConfirmOpen(true);
+  };
+
+  const handleCreateCampaign = async (data: CampaignFormData) => {
+    setBudgetConfirmOpen(false);
+    setPendingCampaignData(null);
     try {
       // Автоматический подбор целевой аудитории с помощью AI
       const audience = await selectTargetAudience(
@@ -2312,7 +2321,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </button>
             </div>
 
-            <form onSubmit={createForm.handleSubmit(handleCreateCampaign)} className="space-y-4">
+            <form onSubmit={createForm.handleSubmit(handleCreateCampaignWithConfirm)} className="space-y-4">
               <div>
                 <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.campaignName} <span className="text-red-400">*</span></label>
                 <input
@@ -2358,7 +2367,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         onChange={() => handlePlatformToggle(platform)}
                         className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 flex-shrink-0"
                       />
-                      <span className="text-white text-xs sm:text-sm break-words min-w-0">{platform}</span>
+                      <div className="min-w-0">
+                        <span className="text-white text-xs sm:text-sm break-words">{platform}</span>
+                        {t.aiAdvertising.platformHints?.[platform as keyof typeof t.aiAdvertising.platformHints] && (
+                          <span className="text-gray-500 text-xs ml-1.5">
+                            — {t.aiAdvertising.platformHints[platform as keyof typeof t.aiAdvertising.platformHints]}
+                          </span>
+                        )}
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -2494,6 +2510,13 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       Другой
                     </button>
                   </div>
+                  {t.aiAdvertising.budgetPeriodHint && (
+                    <p className="text-gray-500 text-xs mt-1">
+                      {budgetPeriod === 'week' && t.aiAdvertising.budgetPeriodHint.week}
+                      {budgetPeriod === 'month' && t.aiAdvertising.budgetPeriodHint.month}
+                      {budgetPeriod === 'custom' && t.aiAdvertising.budgetPeriodHint.custom}
+                    </p>
+                  )}
                   {budgetPeriod === 'custom' && (
                     <input
                       type="number"
@@ -2573,7 +2596,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                   rows={4}
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 resize-none"
                 />
-                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.form.aiDescription}</p>
+                <p className="text-gray-500 text-xs mt-1">{t.aiAdvertising.descriptionHint || t.aiAdvertising.form.aiDescription}</p>
               </div>
 
               <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-4">
@@ -3373,6 +3396,32 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         cancelText={t.aiAdvertising.form.cancel}
         variant="destructive"
         isLoading={isDeleting !== null}
+      />
+
+      {/* Budget Confirmation Dialog */}
+      <ConfirmDialog
+        open={budgetConfirmOpen}
+        onOpenChange={(open) => {
+          setBudgetConfirmOpen(open);
+          if (!open) setPendingCampaignData(null);
+        }}
+        onConfirm={() => {
+          if (pendingCampaignData) {
+            handleCreateCampaign(pendingCampaignData);
+          }
+        }}
+        title={t.aiAdvertising.budgetConfirm?.title || 'Confirm campaign creation'}
+        description={
+          pendingCampaignData
+            ? (t.aiAdvertising.budgetConfirm?.message || '{amount}₸ will be reserved for campaign "{name}" for {days} days.')
+                .replace('{amount}', parseFloat(String(pendingCampaignData.budget)).toLocaleString())
+                .replace('{name}', pendingCampaignData.name)
+                .replace('{days}', String(periodDays))
+            : ''
+        }
+        confirmText={t.aiAdvertising.budgetConfirm?.confirm || t.common?.confirm || 'Confirm'}
+        cancelText={t.aiAdvertising.budgetConfirm?.cancel || t.common?.cancel || 'Cancel'}
+        variant="default"
       />
     </div>
   );
