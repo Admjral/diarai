@@ -1,18 +1,18 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 
 export class CRMController {
   // Получить статистику CRM
   static async getStats(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const [leadsCount, dealsCount, tasksCount, totalDealsAmount] = await Promise.all([
         prisma.lead.count({ where: { userId } }),
@@ -49,13 +49,13 @@ export class CRMController {
   // Получить все данные CRM (leads, deals, tasks)
   static async getAll(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const [leads, deals, tasks] = await Promise.all([
         prisma.lead.findMany({

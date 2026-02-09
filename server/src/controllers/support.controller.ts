@@ -5,9 +5,9 @@ import { SupportTicketStatus, SupportTicketPriority } from '@prisma/client';
 // Получить все обращения пользователя
 export async function getAllTickets(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -38,7 +38,7 @@ export async function getAllTickets(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -82,10 +82,10 @@ export async function getAllTickets(req: Request, res: Response) {
 // Получить обращение по ID
 export async function getTicketById(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const ticketId = parseInt(req.params.id);
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -95,7 +95,7 @@ export async function getTicketById(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -124,10 +124,10 @@ export async function getTicketById(req: Request, res: Response) {
 // Создать новое обращение
 export async function createTicket(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { subject, message, priority } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -137,15 +137,15 @@ export async function createTicket(req: Request, res: Response) {
 
     // Ищем пользователя по email
     let user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     // Если пользователь не найден, создаем нового
     if (!user) {
       user = await prisma.user.create({
         data: {
-          email: userEmail,
-          name: userEmail.split('@')[0] || 'Пользователь',
+          phone: userPhone,
+          name: 'Пользователь',
           password: '', // В реальном приложении пароль хранится в Supabase
         },
       });
@@ -172,11 +172,11 @@ export async function createTicket(req: Request, res: Response) {
 // Обновить обращение (только для администраторов или самого пользователя)
 export async function updateTicket(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const ticketId = parseInt(req.params.id);
     const { status, response } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -186,7 +186,7 @@ export async function updateTicket(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -229,10 +229,10 @@ export async function updateTicket(req: Request, res: Response) {
 // Удалить обращение
 export async function deleteTicket(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const ticketId = parseInt(req.params.id);
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -242,7 +242,7 @@ export async function deleteTicket(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {

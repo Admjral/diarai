@@ -5,15 +5,15 @@ import { IntegrationStatus } from '@prisma/client';
 // Получить все интеграции пользователя
 export async function getIntegrations(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
     // Находим пользователя
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -39,10 +39,10 @@ export async function getIntegrations(req: Request, res: Response) {
 // Подключить интеграцию
 export async function connectIntegration(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { type, config } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -52,7 +52,7 @@ export async function connectIntegration(req: Request, res: Response) {
 
     // Находим пользователя
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -109,10 +109,10 @@ export async function connectIntegration(req: Request, res: Response) {
 // Отключить интеграцию
 export async function disconnectIntegration(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { type } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -122,7 +122,7 @@ export async function disconnectIntegration(req: Request, res: Response) {
 
     // Находим пользователя
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -165,16 +165,16 @@ export async function disconnectIntegration(req: Request, res: Response) {
 // Получить статистику интеграции (количество подключенных клиентов)
 export async function getIntegrationStats(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { type } = req.query;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
     // Находим пользователя
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {

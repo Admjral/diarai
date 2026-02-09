@@ -55,12 +55,12 @@ function AppContent() {
               role: profile.role,
             });
             // Показываем приветственное сообщение после успешной загрузки профиля
-            const userName = profile.name || authUser.email?.split('@')[0] || t.dashboard.user;
+            const userName = profile.name || authUser.name || t.dashboard.user;
             showToast(t.dashboard.welcomeUser.replace('{name}', userName), 'success');
           } catch (error) {
             console.error('Ошибка при загрузке профиля пользователя:', error);
             // Fallback на дефолтные значения при ошибке
-            const fallbackName = authUser.name || authUser.email?.split('@')[0] || t.dashboard.user;
+            const fallbackName = authUser.name || t.dashboard.user;
             setUser({
               name: fallbackName,
               plan: (authUser.plan as 'Start' | 'Pro' | 'Business') || 'Start',

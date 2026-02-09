@@ -11,21 +11,21 @@ const PLAN_PRICES: Record<string, number> = {
 
 // Проверка, является ли пользователь админом
 async function isAdmin(req: Request): Promise<boolean> {
-  const userEmail = req.user?.email;
-  if (!userEmail) return false;
+  const userPhone = req.user?.phone;
+  if (!userPhone) return false;
 
   const user = await prisma.user.findUnique({
-    where: { email: userEmail },
+    where: { phone: userPhone },
     select: { role: true },
   });
 
   return user?.role === Role.admin;
 }
 
-// Получить ID пользователя по email
-async function getUserIdByEmail(email: string): Promise<number | null> {
+// Получить ID пользователя по phone
+async function getUserIdByPhone(phone: string): Promise<number | null> {
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { phone },
     select: { id: true },
   });
   return user?.id || null;
@@ -38,9 +38,9 @@ async function getUserIdByEmail(email: string): Promise<number | null> {
 export async function createPaymentRequest(req: Request, res: Response) {
   try {
     const { plan, note } = req.body;
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
@@ -49,7 +49,7 @@ export async function createPaymentRequest(req: Request, res: Response) {
       return res.status(400).json({ error: 'Выберите план Start, Pro или Business' });
     }
 
-    const userId = await getUserIdByEmail(userEmail);
+    const userId = await getUserIdByPhone(userPhone);
     if (!userId) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
@@ -97,13 +97,13 @@ export async function createPaymentRequest(req: Request, res: Response) {
  */
 export async function getMyPaymentRequests(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
-    const userId = await getUserIdByEmail(userEmail);
+    const userId = await getUserIdByPhone(userPhone);
     if (!userId) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
@@ -143,7 +143,7 @@ export async function getPendingPaymentRequests(req: Request, res: Response) {
         user: {
           select: {
             id: true,
-            email: true,
+            phone: true,
             name: true,
             plan: true,
           },
@@ -197,13 +197,13 @@ export async function approvePaymentRequest(req: Request, res: Response) {
 
     const requestId = parseInt(req.params.id);
     const { adminNote } = req.body;
-    const adminEmail = req.user?.email;
+    const adminPhone = req.user?.phone;
 
-    if (!adminEmail) {
+    if (!adminPhone) {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
-    const adminId = await getUserIdByEmail(adminEmail);
+    const adminId = await getUserIdByPhone(adminPhone);
 
     // Найти запрос
     const request = await prisma.paymentRequest.findUnique({
@@ -237,7 +237,7 @@ export async function approvePaymentRequest(req: Request, res: Response) {
         },
         select: {
           id: true,
-          email: true,
+          phone: true,
           name: true,
           plan: true,
           subscriptionExpiresAt: true,
@@ -269,13 +269,13 @@ export async function rejectPaymentRequest(req: Request, res: Response) {
 
     const requestId = parseInt(req.params.id);
     const { adminNote } = req.body;
-    const adminEmail = req.user?.email;
+    const adminPhone = req.user?.phone;
 
-    if (!adminEmail) {
+    if (!adminPhone) {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
-    const adminId = await getUserIdByEmail(adminEmail);
+    const adminId = await getUserIdByPhone(adminPhone);
 
     // Найти запрос
     const request = await prisma.paymentRequest.findUnique({

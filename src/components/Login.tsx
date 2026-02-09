@@ -1,5 +1,5 @@
 import { useState, memo, useCallback, useMemo } from 'react';
-import { Mail, Lock, Globe, X } from 'lucide-react';
+import { Phone, Lock, Globe, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { Language } from '../lib/translations';
@@ -155,7 +155,7 @@ interface LoginProps {
 export const Login = memo(function Login({ onLogin }: LoginProps) {
   const { signIn, signUp, resetPassword } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -188,25 +188,24 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
     return message || t.login.errors.default;
   }, [t]);
 
-  const handleEmailLogin = useCallback(async (e: React.FormEvent) => {
+  const handlePhoneLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
-    if (!email || !password) {
+
+    if (!phone || !password) {
       setError(t.login.fillAllFields);
       return;
     }
-    
+
     if (!agreed) {
       setError(t.login.needAgreement);
       return;
     }
 
     setIsLoading(true);
-    
+
     if (isSignUp) {
-      // Регистрация
-      const { error: signUpError } = await signUp(email, password);
+      const { error: signUpError } = await signUp(phone, password);
       if (signUpError) {
         setError(getErrorMessage(signUpError.message));
         setIsLoading(false);
@@ -215,12 +214,10 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
         setSuccessMessage(t.login.success.signUp);
         setIsLoading(false);
         setIsLoadingProfile(true);
-        // После успешной регистрации переключаемся на загрузку профиля
-        onLogin(email.split('@')[0]);
+        onLogin(phone.slice(-4));
       }
     } else {
-      // Вход
-      const { error: signInError } = await signIn(email, password);
+      const { error: signInError } = await signIn(phone, password);
       if (signInError) {
         setError(getErrorMessage(signInError.message));
         setIsLoading(false);
@@ -229,42 +226,32 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
         setSuccessMessage(t.login.success.signIn);
         setIsLoading(false);
         setIsLoadingProfile(true);
-        // После успешного входа переключаемся на загрузку профиля
-        onLogin(email.split('@')[0]);
+        onLogin(phone.slice(-4));
       }
     }
-  }, [email, password, agreed, isSignUp, signUp, signIn, getErrorMessage, onLogin, t]);
-
-  const emailRegex = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/, []);
+  }, [phone, password, agreed, isSignUp, signUp, signIn, getErrorMessage, onLogin, t]);
 
   const handleForgotPassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
-    
-    if (!email) {
-      setError(t.login.enterEmailForReset);
-      return;
-    }
 
-    // Базовая валидация email
-    if (!emailRegex.test(email)) {
-      setError(t.login.enterValidEmail);
+    if (!phone) {
+      setError(t.login.enterPhoneForReset);
       return;
     }
 
     setIsLoading(true);
-    const { error: resetError } = await resetPassword(email);
-    
+    const { error: resetError } = await resetPassword(phone);
+
     if (resetError) {
       setError(getErrorMessage(resetError.message));
     } else {
       setSuccessMessage(t.login.resetPasswordSent);
-      // Не закрываем форму, чтобы пользователь видел сообщение
     }
-    
+
     setIsLoading(false);
-  }, [email, emailRegex, getErrorMessage, resetPassword, t]);
+  }, [phone, getErrorMessage, resetPassword, t]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-black flex items-center justify-center p-6 relative overflow-hidden">
@@ -331,15 +318,15 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
           </div>
         )}
 
-        {/* Email login form */}
+        {/* Phone login form */}
         {showForgotPassword ? (
           <form onSubmit={handleForgotPassword} className="space-y-4 mb-6">
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder={t.login.forgotPasswordPlaceholder}
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
                 required
@@ -367,14 +354,14 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
             </button>
           </form>
         ) : (
-          <form onSubmit={handleEmailLogin} className="space-y-4 mb-6">
+          <form onSubmit={handlePhoneLogin} className="space-y-4 mb-6">
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={t.login.emailPlaceholder}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder={t.login.phonePlaceholder}
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
               />
             </div>

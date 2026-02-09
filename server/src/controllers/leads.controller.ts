@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 import { createNotification } from '../services/notification.service';
 import { NotificationType } from '@prisma/client';
 
@@ -8,12 +8,12 @@ export class LeadsController {
   // Получить все лиды пользователя
   static async getLeads(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       
       // Безопасное логирование без чувствительных данных
-      console.log('[leads] Запрос на получение лидов от:', userEmail);
+      console.log('[leads] Запрос на получение лидов от:', userPhone);
       
-      if (!userEmail) {
+      if (!userPhone) {
         console.error('Email пользователя не предоставлен');
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
@@ -21,7 +21,7 @@ export class LeadsController {
       // Получаем userId из базы данных по email
       let userId: number;
       try {
-        userId = await getUserIdByEmail(userEmail);
+        userId = await getUserIdByPhone(userPhone);
       } catch (error: any) {
         console.error('[leads] Ошибка получения userId:', error.message);
         return res.status(500).json({
@@ -59,13 +59,13 @@ export class LeadsController {
   static async getLeadById(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const lead = await prisma.lead.findFirst({
         where: { 
@@ -97,10 +97,10 @@ export class LeadsController {
   // Создать новый лид
   static async createLead(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { name, phone, email, status, source, stage, lastAction, notes, campaignId } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
@@ -114,7 +114,7 @@ export class LeadsController {
         return res.status(400).json({ error: 'Неверный формат email адреса' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       // Проверяем, что кампания принадлежит пользователю, если campaignId указан
       if (campaignId) {
@@ -195,10 +195,10 @@ export class LeadsController {
   static async updateLead(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { name, phone, email, status, source, stage, lastAction, notes, campaignId } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
@@ -216,7 +216,7 @@ export class LeadsController {
         }
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const lead = await prisma.lead.findFirst({
         where: { 
@@ -287,9 +287,9 @@ export class LeadsController {
   static async deleteLead(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
@@ -299,7 +299,7 @@ export class LeadsController {
         return res.status(400).json({ error: 'Неверный формат ID' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const lead = await prisma.lead.findFirst({
         where: { 

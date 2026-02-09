@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 import { getStorageService } from '../services/storage.service';
 import { log } from '../utils/logger';
 import { getBudgetRecommendations, calculateDailyBudget } from '../services/budget.service';
@@ -9,13 +9,13 @@ export class CampaignsController {
   // Получить все кампании
   static async getCampaigns(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
       
       const campaigns = await prisma.campaign.findMany({
         where: { userId },
@@ -92,13 +92,13 @@ export class CampaignsController {
   static async getCampaignById(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const campaign = await prisma.campaign.findFirst({
         where: { 
@@ -160,13 +160,13 @@ export class CampaignsController {
       }
 
       // Получаем userId из базы данных по email
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       // Преобразуем budget и spent из строки в число (убираем ₸ и запятые)
       const budgetNum = typeof budget === 'string'
@@ -334,13 +334,13 @@ export class CampaignsController {
   static async updateCampaign(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
       const {
         name,
         platforms,
@@ -444,13 +444,13 @@ export class CampaignsController {
   static async deleteCampaign(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const campaign = await prisma.campaign.findUnique({
         where: { id: parseInt(id, 10) },

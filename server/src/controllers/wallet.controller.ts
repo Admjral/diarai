@@ -7,21 +7,21 @@ import { log } from '../utils/logger';
 // Получить кошелек пользователя
 export async function getWallet(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
-    log.debug('getWallet: запрос', { userEmail });
+    const userPhone = req.user?.phone;
+    log.debug('getWallet: запрос', { userPhone });
 
-    if (!userEmail) {
+    if (!userPhone) {
       log.warn('getWallet: email не предоставлен');
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
-      log.warn('getWallet: пользователь не найден', { userEmail });
+      log.warn('getWallet: пользователь не найден', { userPhone });
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
@@ -114,12 +114,12 @@ export async function getWallet(req: Request, res: Response) {
 // Пополнить кошелек
 export async function addFunds(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { amount, paymentMethod } = req.body;
 
-    log.debug('addFunds: запрос', { userEmail, amount, paymentMethod });
+    log.debug('addFunds: запрос', { userPhone, amount, paymentMethod });
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -134,7 +134,7 @@ export async function addFunds(req: Request, res: Response) {
 
     // Если указан способ оплаты kaspi, создаем заказ в Kaspi
     if (isKaspi) {
-      log.info('addFunds: создание заказа Kaspi', { userEmail });
+      log.info('addFunds: создание заказа Kaspi', { userPhone });
       return await createKaspiDepositOrder(req, res);
     }
 
@@ -142,7 +142,7 @@ export async function addFunds(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -186,10 +186,10 @@ export async function addFunds(req: Request, res: Response) {
 // Снять средства с кошелька
 export async function withdrawFunds(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { amount } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -201,7 +201,7 @@ export async function withdrawFunds(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -261,10 +261,10 @@ export async function withdrawFunds(req: Request, res: Response) {
 // Обновить валюту кошелька
 export async function updateCurrency(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { currency } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -274,7 +274,7 @@ export async function updateCurrency(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -319,15 +319,15 @@ export async function updateCurrency(req: Request, res: Response) {
 // Получить историю транзакций кошелька
 export async function getTransactions(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -370,13 +370,13 @@ export async function getTransactions(req: Request, res: Response) {
 
 // Создать заказ Kaspi для пополнения кошелька
 export async function createKaspiDepositOrder(req: Request, res: Response) {
-  log.debug('createKaspiDepositOrder: запрос', { userEmail: req.user?.email });
+  log.debug('createKaspiDepositOrder: запрос', { userPhone: req.user?.phone });
 
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { amount } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -386,7 +386,7 @@ export async function createKaspiDepositOrder(req: Request, res: Response) {
 
     // Ищем пользователя по email
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {

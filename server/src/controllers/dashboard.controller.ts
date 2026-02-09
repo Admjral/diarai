@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 
 // Вспомогательная функция для расчета процентного изменения
 function calculatePercentageChange(current: number, previous: number): number {
@@ -65,13 +65,13 @@ export class DashboardController {
   // Получить статистику для дашборда
   static async getStats(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       // Даты для расчета изменений за неделю
       const now = new Date();

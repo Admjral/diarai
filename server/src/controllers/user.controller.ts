@@ -5,18 +5,18 @@ import { Plan, Role } from '@prisma/client';
 // Получить профиль пользователя (включая план)
 export async function getUserProfile(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
-      return res.status(401).json({ error: 'Email пользователя не предоставлен' });
+    if (!userPhone) {
+      return res.status(401).json({ error: 'Телефон пользователя не предоставлен' });
     }
 
-    // Ищем пользователя по email
+    // Ищем пользователя по телефону
     let user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
       select: {
         id: true,
-        email: true,
+        phone: true,
         name: true,
         plan: true,
         role: true,
@@ -29,15 +29,15 @@ export async function getUserProfile(req: Request, res: Response) {
     if (!user) {
       user = await prisma.user.create({
         data: {
-          email: userEmail,
-          name: userEmail.split('@')[0] || 'Пользователь',
+          phone: userPhone,
+          name: 'Пользователь',
           password: '', // В реальном приложении пароль хранится в Supabase
           plan: Plan.Start,
           role: Role.user,
         },
         select: {
           id: true,
-          email: true,
+          phone: true,
           name: true,
           plan: true,
           role: true,
@@ -53,7 +53,7 @@ export async function getUserProfile(req: Request, res: Response) {
 
     res.json({
       id: user.id,
-      email: user.email,
+      phone: user.phone,
       name: user.name,
       plan: user.plan,
       role: user.role,
@@ -108,10 +108,10 @@ export async function getUserProfile(req: Request, res: Response) {
 // Обновить план пользователя
 export async function updateUserPlan(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { plan } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -121,15 +121,15 @@ export async function updateUserPlan(req: Request, res: Response) {
 
     // Ищем пользователя по email
     let user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     // Если пользователь не найден, создаем нового
     if (!user) {
       user = await prisma.user.create({
         data: {
-          email: userEmail,
-          name: userEmail.split('@')[0] || 'Пользователь',
+          phone: userPhone,
+          name: 'Пользователь',
           password: '', // В реальном приложении пароль хранится в Supabase
           plan: plan as Plan,
           role: Role.user,
@@ -138,14 +138,14 @@ export async function updateUserPlan(req: Request, res: Response) {
     } else {
       // Обновляем план существующего пользователя
       user = await prisma.user.update({
-        where: { email: userEmail },
+        where: { phone: userPhone },
         data: { plan: plan as Plan },
       });
     }
 
     res.json({
       id: user.id,
-      email: user.email,
+      phone: user.phone,
       name: user.name,
       plan: user.plan,
       message: 'План подписки успешно обновлен',

@@ -12,7 +12,7 @@ export function errorHandler(
     url: req.url,
     method: req.method,
     userId: req.user?.userId,
-    userEmail: req.user?.email,
+    userPhone: req.user?.phone,
     headers: req.headers,
   });
 
@@ -61,7 +61,7 @@ export function errorHandler(
       scope.setTag('method', req.method);
       scope.setUser({
         id: req.user?.userId,
-        email: req.user?.email,
+        phone: req.user?.phone,
       });
       scope.setContext('request', {
         url: req.url,

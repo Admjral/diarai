@@ -20,10 +20,10 @@ import { verifyKaspiWebhook, isKaspiPaymentSuccess, isKaspiPaymentFailed } from 
  */
 export async function subscribe(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { plan, paymentMethod } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -41,7 +41,7 @@ export async function subscribe(req: Request, res: Response) {
 
     // Находим пользователя
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -113,10 +113,10 @@ export async function subscribe(req: Request, res: Response) {
  */
 export async function createKaspiOrder(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const { plan, amount } = req.body;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -127,7 +127,7 @@ export async function createKaspiOrder(req: Request, res: Response) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -223,14 +223,14 @@ export async function handleKaspiWebhook(req: Request, res: Response) {
  */
 export async function getPaymentHistoryHandler(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {
@@ -258,10 +258,10 @@ export async function getPaymentHistoryHandler(req: Request, res: Response) {
  */
 export async function getPayment(req: Request, res: Response) {
   try {
-    const userEmail = req.user?.email;
+    const userPhone = req.user?.phone;
     const paymentId = parseInt(req.params.id);
 
-    if (!userEmail) {
+    if (!userPhone) {
       return res.status(401).json({ error: 'Email пользователя не предоставлен' });
     }
 
@@ -270,7 +270,7 @@ export async function getPayment(req: Request, res: Response) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: userEmail },
+      where: { phone: userPhone },
     });
 
     if (!user) {

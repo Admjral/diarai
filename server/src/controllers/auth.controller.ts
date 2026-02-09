@@ -16,16 +16,16 @@ function getJwtSecret(): string {
 
 interface JwtPayload {
   userId: number;
-  email: string;
+  phone: string;
   role: string;
 }
 
 // Генерация JWT токена
-const generateToken = (user: { id: number; email: string; role: string }): string => {
+const generateToken = (user: { id: number; phone: string; role: string }): string => {
   return jwt.sign(
     {
       userId: user.id,
-      email: user.email,
+      phone: user.phone,
       role: user.role,
     } as JwtPayload,
     getJwtSecret(),
@@ -33,69 +33,82 @@ const generateToken = (user: { id: number; email: string; role: string }): strin
   );
 };
 
+// Нормализация номера телефона: оставляем только цифры, приводим к формату 7XXXXXXXXXX
+function normalizePhone(phone: string): string {
+  let digits = phone.replace(/\D/g, '');
+  // 8XXXXXXXXXX → 7XXXXXXXXXX
+  if (digits.startsWith('8') && digits.length === 11) {
+    digits = '7' + digits.slice(1);
+  }
+  // Если нет кода страны, добавляем 7
+  if (digits.length === 10) {
+    digits = '7' + digits;
+  }
+  return digits;
+}
+
+// Валидация номера телефона (казахстанский формат)
+function isValidPhone(phone: string): boolean {
+  const digits = normalizePhone(phone);
+  return /^7\d{10}$/.test(digits);
+}
+
 // Регистрация
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, name } = req.body;
+    const { phone, password, name } = req.body;
 
-    // Валидация
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Номер телефона и пароль обязательны' });
     }
 
-    // Валидация email формата
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Неверный формат email' });
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Неверный формат номера телефона. Используйте формат +7XXXXXXXXXX' });
     }
 
-    // Усиленная валидация пароля
+    const normalizedPhone = normalizePhone(phone);
+
     if (password.length < 8) {
       return res.status(400).json({ error: 'Пароль должен быть не менее 8 символов' });
     }
 
-    // Проверка на наличие хотя бы одной цифры и буквы
     const hasLetter = /[a-zA-Zа-яА-Я]/.test(password);
     const hasNumber = /\d/.test(password);
     if (!hasLetter || !hasNumber) {
       return res.status(400).json({ error: 'Пароль должен содержать буквы и цифры' });
     }
 
-    // Проверка существующего пользователя
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { phone: normalizedPhone },
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+      return res.status(400).json({ error: 'Пользователь с таким номером уже существует' });
     }
 
-    // Хеширование пароля
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Создание пользователя
     const user = await prisma.user.create({
       data: {
-        email,
+        phone: normalizedPhone,
         password: hashedPassword,
-        name: name || email.split('@')[0],
+        name: name || `User ${normalizedPhone.slice(-4)}`,
         plan: 'Start',
         role: 'user',
       },
     });
 
-    // Генерация токена
     const token = generateToken(user);
 
-    console.log(`[Auth] Зарегистрирован новый пользователь: ${email}`);
+    console.log(`[Auth] Зарегистрирован новый пользователь: ${normalizedPhone}`);
 
     res.status(201).json({
       message: 'Регистрация успешна',
       token,
       user: {
         id: user.id,
-        email: user.email,
+        phone: user.phone,
         name: user.name,
         plan: user.plan,
         role: user.role,
@@ -110,40 +123,38 @@ export const register = async (req: Request, res: Response) => {
 // Вход
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { phone, password } = req.body;
 
-    // Валидация
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Номер телефона и пароль обязательны' });
     }
 
-    // Поиск пользователя
+    const normalizedPhone = normalizePhone(phone);
+
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { phone: normalizedPhone },
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Неверный email или пароль' });
+      return res.status(401).json({ error: 'Неверный номер телефона или пароль' });
     }
 
-    // Проверка пароля
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Неверный email или пароль' });
+      return res.status(401).json({ error: 'Неверный номер телефона или пароль' });
     }
 
-    // Генерация токена
     const token = generateToken(user);
 
-    console.log(`[Auth] Пользователь вошёл: ${email}`);
+    console.log(`[Auth] Пользователь вошёл: ${normalizedPhone}`);
 
     res.json({
       message: 'Вход выполнен успешно',
       token,
       user: {
         id: user.id,
-        email: user.email,
+        phone: user.phone,
         name: user.name,
         plan: user.plan,
         role: user.role,
@@ -164,11 +175,11 @@ export const me = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
-    // Получаем актуальные данные из БД
     const dbUser = await prisma.user.findUnique({
       where: { id: user.userId },
       select: {
         id: true,
+        phone: true,
         email: true,
         name: true,
         plan: true,
@@ -189,10 +200,8 @@ export const me = async (req: Request, res: Response) => {
   }
 };
 
-// Выход (опционально - для blacklist токенов)
+// Выход
 export const logout = async (req: Request, res: Response) => {
-  // В простой реализации токен просто удаляется на клиенте
-  // Для blacklist нужна Redis или таблица в БД
   res.json({ message: 'Выход выполнен успешно' });
 };
 
@@ -205,7 +214,6 @@ export const refreshToken = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Не авторизован' });
     }
 
-    // Получаем актуальные данные из БД
     const dbUser = await prisma.user.findUnique({
       where: { id: user.userId },
     });
@@ -214,14 +222,13 @@ export const refreshToken = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
-    // Генерируем новый токен
     const token = generateToken(dbUser);
 
     res.json({
       token,
       user: {
         id: dbUser.id,
-        email: dbUser.email,
+        phone: dbUser.phone,
         name: dbUser.name,
         plan: dbUser.plan,
         role: dbUser.role,

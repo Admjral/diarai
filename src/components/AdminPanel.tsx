@@ -517,7 +517,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const allFilteredUsers = useMemo(() => {
     return users.filter(user => {
       const matchesSearch =
-        user.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+        (user.phone || '').toLowerCase().includes(userSearch.toLowerCase()) ||
         user.name.toLowerCase().includes(userSearch.toLowerCase());
       const matchesPlan = userPlanFilter === 'all' || user.plan === userPlanFilter;
       return matchesSearch && matchesPlan;
@@ -540,7 +540,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   const allFilteredCampaigns = useMemo(() => {
     return campaigns.filter(campaign => {
       const matchesName = campaign.name.toLowerCase().includes(campaignSearch.toLowerCase());
-      const matchesUser = campaign.user?.email.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+      const matchesUser = (campaign.user?.phone || '').toLowerCase().includes(campaignSearch.toLowerCase()) ||
                          campaign.user?.name.toLowerCase().includes(campaignSearch.toLowerCase());
       return matchesName || matchesUser;
     });
@@ -813,7 +813,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     <tbody>
                       {filteredUsers.map(user => (
                         <tr key={user.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-white text-xs sm:text-sm break-words">{user.email}</td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-white text-xs sm:text-sm break-words">{user.phone}</td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">{user.name}</td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <select
@@ -933,7 +933,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                         >
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-white text-xs sm:text-sm break-words">{campaign.name}</td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
-                            {campaign.user ? `${campaign.user.name} (${campaign.user.email})` : 'N/A'}
+                            {campaign.user ? `${campaign.user.name} (${campaign.user.phone})` : 'N/A'}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
                             {campaign.phone || <span className="text-gray-500">—</span>}
@@ -1058,7 +1058,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                       </div>
                       {selectedCampaign.user && (
                         <p className="text-gray-400 text-xs sm:text-sm break-words">
-                          Пользователь: {selectedCampaign.user.name} ({selectedCampaign.user.email})
+                          Пользователь: {selectedCampaign.user.name} ({selectedCampaign.user.phone})
                         </p>
                       )}
                     </div>
@@ -1200,7 +1200,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                       {wallets.map(wallet => (
                         <tr key={wallet.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-white text-xs sm:text-sm break-words">
-                            {wallet.user ? `${wallet.user.name} (${wallet.user.email})` : `User ID: ${wallet.userId}`}
+                            {wallet.user ? `${wallet.user.name} (${wallet.user.phone})` : `User ID: ${wallet.userId}`}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 font-semibold text-xs sm:text-sm">
                             {wallet.balance} {wallet.currency}
@@ -1266,7 +1266,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                             <td className="px-4 py-3 text-white text-sm">
                               <div>
                                 <p className="font-medium">{request.user?.name || 'N/A'}</p>
-                                <p className="text-gray-400 text-xs">{request.user?.email || `ID: ${request.userId}`}</p>
+                                <p className="text-gray-400 text-xs">{request.user?.phone || `ID: ${request.userId}`}</p>
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -1351,7 +1351,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                             <td className="px-4 py-3 text-white text-sm">
                               <div>
                                 <p className="font-medium">{request.user?.name || 'N/A'}</p>
-                                <p className="text-gray-400 text-xs">{request.user?.email || `ID: ${request.userId}`}</p>
+                                <p className="text-gray-400 text-xs">{request.user?.phone || `ID: ${request.userId}`}</p>
                               </div>
                             </td>
                             <td className="px-4 py-3 text-white font-semibold text-sm">
@@ -1450,7 +1450,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
               <div>
                 <label className="block text-sm text-gray-400 mb-2">{t.adminPanel.wallet.user}</label>
                 <p className="text-white">
-                  {selectedWallet.user ? `${selectedWallet.user.name} (${selectedWallet.user.email})` : `User ID: ${selectedWallet.userId}`}
+                  {selectedWallet.user ? `${selectedWallet.user.name} (${selectedWallet.user.phone})` : `User ID: ${selectedWallet.userId}`}
                 </p>
               </div>
               <div>
@@ -1527,7 +1527,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   <option value="">{t.adminPanel.exportImport.selectUserPlaceholder}</option>
                   {users.map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.name} ({user.email})
+                      {user.name} ({user.phone})
                     </option>
                   ))}
                 </select>
@@ -1592,7 +1592,7 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                   <option value="">{t.adminPanel.exportImport.allUsers}</option>
                   {users.map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.name} ({user.email})
+                      {user.name} ({user.phone})
                     </option>
                   ))}
                 </select>

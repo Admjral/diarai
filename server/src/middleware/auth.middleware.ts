@@ -17,7 +17,7 @@ declare global {
     interface Request {
       user?: {
         userId: number;
-        email: string;
+        phone: string;
         role: string;
       };
     }
@@ -26,7 +26,7 @@ declare global {
 
 interface JwtPayload {
   userId: number;
-  email: string;
+  phone: string;
   role: string;
   iat: number;
   exp: number;
@@ -62,13 +62,13 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
     log.debug('Пользователь аутентифицирован', {
       userId: decoded.userId,
-      userEmail: decoded.email,
+      userPhone: decoded.phone,
     });
 
     // Добавляем user в request
     req.user = {
       userId: decoded.userId,
-      email: decoded.email,
+      phone: decoded.phone,
       role: decoded.role,
     };
 
@@ -118,16 +118,16 @@ export function devAuthMiddleware(req: Request, res: Response, next: NextFunctio
 
   // В режиме разработки используем заголовки для идентификации пользователя
   const userId = parseInt(req.headers['x-user-id'] as string) || 1;
-  const userEmail = req.headers['x-user-email'] as string || 'dev@example.com';
+  const userPhone = req.headers['x-user-phone'] as string || '70000000000';
 
   log.debug('devAuthMiddleware используется (только локальная разработка)', {
     userId,
-    userEmail,
+    userPhone,
   });
 
   req.user = {
     userId: userId,
-    email: userEmail,
+    phone: userPhone,
     role: 'user',
   };
 

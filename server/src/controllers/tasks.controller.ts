@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 import { createNotification } from '../services/notification.service';
 import { NotificationType } from '@prisma/client';
 
@@ -8,13 +8,13 @@ export class TasksController {
   // Получить все задачи пользователя
   static async getTasks(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const tasks = await prisma.task.findMany({
         where: { userId },
@@ -35,13 +35,13 @@ export class TasksController {
   static async getTaskById(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const task = await prisma.task.findFirst({
         where: { 
@@ -64,10 +64,10 @@ export class TasksController {
   // Создать новую задачу
   static async createTask(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { title, description, status, priority, dueDate, clientId, dealId, assignedTo, tags } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
@@ -75,7 +75,7 @@ export class TasksController {
         return res.status(400).json({ error: 'Необходимо поле: title' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const task = await prisma.task.create({
         data: {
@@ -130,14 +130,14 @@ export class TasksController {
   static async updateTask(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { title, description, status, priority, dueDate, clientId, dealId, assignedTo, tags } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const task = await prisma.task.findFirst({
         where: { 
@@ -218,13 +218,13 @@ export class TasksController {
   static async deleteTask(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const task = await prisma.task.findFirst({
         where: { 

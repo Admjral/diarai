@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/prisma';
-import { getUserIdByEmail } from '../utils/userHelper';
+import { getUserIdByPhone } from '../utils/userHelper';
 import { createNotification } from '../services/notification.service';
 import { NotificationType } from '@prisma/client';
 
@@ -8,13 +8,13 @@ export class DealsController {
   // Получить все сделки пользователя
   static async getDeals(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const deals = await prisma.deal.findMany({
         where: { userId },
@@ -32,13 +32,13 @@ export class DealsController {
   static async getDealById(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const deal = await prisma.deal.findFirst({
         where: { 
@@ -61,10 +61,10 @@ export class DealsController {
   // Создать новую сделку
   static async createDeal(req: Request, res: Response) {
     try {
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { name, clientName, amount, currency, stage, probability, expectedCloseDate, notes, clientId } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
@@ -74,7 +74,7 @@ export class DealsController {
         return res.status(400).json({ error: 'Необходимо поле: name (не может быть пустым)' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       // Обработка amount - может быть строкой или числом
       let amountValue = 0;
@@ -117,14 +117,14 @@ export class DealsController {
   static async updateDeal(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
       const { name, clientName, amount, currency, stage, probability, expectedCloseDate, notes, clientId } = req.body;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const deal = await prisma.deal.findFirst({
         where: { 
@@ -196,13 +196,13 @@ export class DealsController {
   static async deleteDeal(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userEmail = req.user?.email;
+      const userPhone = req.user?.phone;
 
-      if (!userEmail) {
+      if (!userPhone) {
         return res.status(401).json({ error: 'Email пользователя не предоставлен' });
       }
 
-      const userId = await getUserIdByEmail(userEmail);
+      const userId = await getUserIdByPhone(userPhone);
 
       const deal = await prisma.deal.findFirst({
         where: { 

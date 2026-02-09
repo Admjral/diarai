@@ -5,11 +5,11 @@ import Papa from 'papaparse';
 
 // Проверка, является ли пользователь админом
 async function isAdmin(req: Request): Promise<boolean> {
-  const userEmail = req.user?.email;
-  if (!userEmail) return false;
+  const userPhone = req.user?.phone;
+  if (!userPhone) return false;
   
   const user = await prisma.user.findUnique({
-    where: { email: userEmail },
+    where: { phone: userPhone },
     select: { role: true },
   });
   
@@ -26,7 +26,7 @@ export async function getAllUsers(req: Request, res: Response) {
     const users = await prisma.user.findMany({
       select: {
         id: true,
-        email: true,
+        phone: true,
         name: true,
         plan: true,
         role: true,
@@ -62,7 +62,7 @@ export async function updateUserPlan(req: Request, res: Response) {
       data: { plan: plan as Plan },
       select: {
         id: true,
-        email: true,
+        phone: true,
         name: true,
         plan: true,
         role: true,
@@ -95,7 +95,7 @@ export async function updateUserRole(req: Request, res: Response) {
       data: { role: role as Role },
       select: {
         id: true,
-        email: true,
+        phone: true,
         name: true,
         role: true,
       },
@@ -124,7 +124,7 @@ export async function getAllCampaigns(req: Request, res: Response) {
       campaigns.map(async (campaign) => {
         const user = await prisma.user.findUnique({
           where: { id: campaign.userId },
-          select: { email: true, name: true },
+          select: { phone: true, name: true },
         });
         
         // Парсим audience из JSON, если он есть
@@ -262,7 +262,7 @@ export async function exportLeads(req: Request, res: Response) {
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, name: true },
+        select: { phone: true, name: true },
       });
 
       if (!user) {
@@ -307,7 +307,7 @@ export async function exportClients(req: Request, res: Response) {
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, name: true },
+        select: { phone: true, name: true },
       });
 
       if (!user) {
@@ -352,7 +352,7 @@ export async function exportCampaignsStats(req: Request, res: Response) {
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, name: true },
+        select: { phone: true, name: true },
       });
 
       if (!user) {
@@ -372,11 +372,11 @@ export async function exportCampaignsStats(req: Request, res: Response) {
       campaigns.map(async (campaign) => {
         const user = await prisma.user.findUnique({
           where: { id: campaign.userId },
-          select: { email: true, name: true },
+          select: { phone: true, name: true },
         });
         return {
           ...campaign,
-          userEmail: user?.email || 'N/A',
+          userPhone: user?.phone || 'N/A',
           userName: user?.name || 'N/A',
         };
       })
@@ -388,7 +388,7 @@ export async function exportCampaignsStats(req: Request, res: Response) {
       const platforms = campaign.platform.split(', ').filter(Boolean).join('; ');
       const budget = Number(campaign.budget).toFixed(2);
       const spent = Number(campaign.spent).toFixed(2);
-      return `${campaign.id},"${campaign.name}","${campaign.userName}","${campaign.userEmail}","${platforms}","${campaign.status}",${budget},${spent},${campaign.conversions},"${campaign.createdAt.toISOString()}","${campaign.updatedAt.toISOString()}"`;
+      return `${campaign.id},"${campaign.name}","${campaign.userName}","${campaign.userPhone}","${platforms}","${campaign.status}",${budget},${spent},${campaign.conversions},"${campaign.createdAt.toISOString()}","${campaign.updatedAt.toISOString()}"`;
     }).join('\n');
 
     const filename = userId ? `campaigns_stats_user_${userId}.csv` : 'campaigns_stats_all.csv';
@@ -418,7 +418,7 @@ export async function getAllWallets(req: Request, res: Response) {
       wallets.map(async (wallet) => {
         const user = await prisma.user.findUnique({
           where: { id: wallet.userId },
-          select: { email: true, name: true },
+          select: { phone: true, name: true },
         });
         return {
           ...wallet,
@@ -473,7 +473,7 @@ export async function adminAddFunds(req: Request, res: Response) {
 
     const user = await prisma.user.findUnique({
       where: { id: parseInt(userId) },
-      select: { email: true, name: true },
+      select: { phone: true, name: true },
     });
 
     res.json({
@@ -531,7 +531,7 @@ export async function adminWithdrawFunds(req: Request, res: Response) {
 
     const user = await prisma.user.findUnique({
       where: { id: parseInt(userId) },
-      select: { email: true, name: true },
+      select: { phone: true, name: true },
     });
 
     res.json({
@@ -583,7 +583,7 @@ export async function adminSetBalance(req: Request, res: Response) {
 
     const user = await prisma.user.findUnique({
       where: { id: parseInt(userId) },
-      select: { email: true, name: true },
+      select: { phone: true, name: true },
     });
 
     res.json({
@@ -929,7 +929,7 @@ export async function updateCampaignStats(req: Request, res: Response) {
     // Получаем информацию о пользователе
     const user = await prisma.user.findUnique({
       where: { id: updatedCampaign.userId },
-      select: { email: true, name: true },
+      select: { phone: true, name: true },
     });
 
     res.json({
@@ -1042,9 +1042,9 @@ export async function adminEditCampaign(req: Request, res: Response) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
-    const adminEmail = req.user?.email;
+    const adminPhone = req.user?.phone;
     const admin = await prisma.user.findUnique({
-      where: { email: adminEmail },
+      where: { phone: adminPhone },
       select: { id: true },
     });
 
@@ -1155,9 +1155,9 @@ export async function approveCampaign(req: Request, res: Response) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
-    const adminEmail = req.user?.email;
+    const adminPhone = req.user?.phone;
     const admin = await prisma.user.findUnique({
-      where: { email: adminEmail },
+      where: { phone: adminPhone },
       select: { id: true },
     });
 
@@ -1222,9 +1222,9 @@ export async function rejectCampaign(req: Request, res: Response) {
       return res.status(403).json({ error: 'Доступ запрещен' });
     }
 
-    const adminEmail = req.user?.email;
+    const adminPhone = req.user?.phone;
     const admin = await prisma.user.findUnique({
-      where: { email: adminEmail },
+      where: { phone: adminPhone },
       select: { id: true },
     });
 
@@ -1310,7 +1310,7 @@ export async function getCampaignHistory(req: Request, res: Response) {
       where: { campaignId: parseInt(campaignId) },
       include: {
         admin: {
-          select: { id: true, email: true, name: true },
+          select: { id: true, phone: true, name: true },
         },
       },
       orderBy: { createdAt: 'desc' },

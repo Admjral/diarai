@@ -366,7 +366,8 @@ export const campaignsAPI = {
 // API для пользователя
 export interface UserProfile {
   id: number;
-  email: string;
+  phone: string;
+  email?: string;
   name: string;
   plan: 'Start' | 'Pro' | 'Business';
   role?: 'user' | 'admin';
@@ -533,7 +534,8 @@ export interface AdminStats {
 
 export interface AdminUser {
   id: number;
-  email: string;
+  phone: string;
+  email?: string;
   name: string;
   plan: 'Start' | 'Pro' | 'Business';
   role: 'user' | 'admin';
@@ -553,7 +555,7 @@ export interface CampaignWithUser {
   phone: string | null;
   audience: any;
   user: {
-    email: string;
+    phone: string;
     name: string;
   } | null;
 }
@@ -566,7 +568,7 @@ export interface WalletWithUser {
   createdAt: string;
   updatedAt: string;
   user: {
-    email: string;
+    phone: string;
     name: string;
   } | null;
 }
@@ -842,7 +844,7 @@ export const adminAPI = {
       newValue: any;
       comment: string | null;
       createdAt: string;
-      admin: { id: number; email: string; name: string };
+      admin: { id: number; phone: string; name: string };
     }>>(`/api/admin/campaigns/${campaignId}/history`),
 };
 
@@ -1157,7 +1159,7 @@ export interface PaymentRequest {
   processedBy?: number;
   user?: {
     id: number;
-    email: string;
+    phone: string;
     name: string;
   };
 }
@@ -1213,7 +1215,7 @@ export interface WalletTopUpRequest {
   processedBy?: number;
   user?: {
     id: number;
-    email: string;
+    phone: string;
     name: string;
   };
 }

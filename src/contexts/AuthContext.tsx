@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 // Типы для нашей собственной аутентификации
 interface User {
   id: number;
-  email: string;
+  phone: string;
+  email?: string;
   name: string;
   plan: string;
   role: string;
@@ -17,10 +18,10 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
+  signIn: (phone: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (phone: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+  resetPassword: (phone: string) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearAuth = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('userPhone');
     sessionStorage.removeItem('userId');
     setToken(null);
     setUser(null);
@@ -88,21 +89,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const saveAuth = (authToken: string, authUser: User) => {
     localStorage.setItem(TOKEN_KEY, authToken);
     localStorage.setItem(USER_KEY, JSON.stringify(authUser));
-    sessionStorage.setItem('userEmail', authUser.email);
+    sessionStorage.setItem('userPhone', authUser.phone);
     sessionStorage.setItem('userId', String(authUser.id));
     setToken(authToken);
     setUser(authUser);
   };
 
   // Вход
-  const signIn = async (email: string, password: string): Promise<{ error: AuthError | null }> => {
+  const signIn = async (phone: string, password: string): Promise<{ error: AuthError | null }> => {
     try {
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ phone, password }),
       });
 
       const data = await response.json();
@@ -121,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Регистрация
   const signUp = async (
-    email: string,
+    phone: string,
     password: string,
     name?: string
   ): Promise<{ error: AuthError | null }> => {
@@ -131,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password, name }),
+        body: JSON.stringify({ phone, password, name }),
       });
 
       const data = await response.json();
@@ -166,10 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Сброс пароля (пока заглушка - можно реализовать через email)
-  const resetPassword = async (email: string): Promise<{ error: AuthError | null }> => {
-    // TODO: Реализовать сброс пароля через email
-    console.log('Reset password requested for:', email);
+  // Сброс пароля (пока заглушка - можно реализовать через SMS)
+  const resetPassword = async (phone: string): Promise<{ error: AuthError | null }> => {
+    // TODO: Реализовать сброс пароля через SMS
+    console.log('Reset password requested for:', phone);
     return { error: { message: 'Функция сброса пароля пока не реализована' } };
   };
 
