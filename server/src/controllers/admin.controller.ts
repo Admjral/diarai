@@ -151,6 +151,7 @@ export async function getAllCampaigns(req: Request, res: Response) {
           conversions: campaign.conversions,
           imageUrl: campaign.imageUrl || null,
           phone: campaign.phone || null,
+          location: campaign.location || null,
           audience: parsedAudience,
           user: user || null,
         };

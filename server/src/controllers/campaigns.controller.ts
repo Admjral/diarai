@@ -49,7 +49,7 @@ export class CampaignsController {
           conversions: campaign.conversions,
           imageUrl: campaign.imageUrl || null,
           phone: campaign.phone || null,
-          location: null, // Можно добавить в схему позже
+          location: campaign.location || null,
           audience: parsedAudience,
         };
       });
@@ -259,6 +259,10 @@ export class CampaignsController {
           campaignData.audience = audience;
         }
 
+        if (location) {
+          campaignData.location = location.trim();
+        }
+
         const campaign = await tx.campaign.create({
           data: campaignData,
         });
@@ -386,6 +390,7 @@ export class CampaignsController {
         ...(conversions !== undefined && { conversions }),
         ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(phone !== undefined && { phone: phone?.trim() || null }),
+        ...(location !== undefined && { location: location?.trim() || null }),
       };
 
       // Сохраняем audience как JSON, если он передан
@@ -411,7 +416,7 @@ export class CampaignsController {
         spent: `₸${Number(updatedCampaign.spent).toLocaleString()}`,
         imageUrl: updatedCampaign.imageUrl || null,
         phone: updatedCampaign.phone || null,
-        location: location || null,
+        location: updatedCampaign.location || null,
         audience: parsedAudience,
       });
     } catch (error: any) {

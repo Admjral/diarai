@@ -1,4 +1,4 @@
-import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle } from 'lucide-react';
+import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle, Globe } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser, paymentRequestAPI, PaymentRequest, walletTopUpAPI, WalletTopUpRequest } from '../lib/api';
@@ -905,13 +905,14 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                 </div>
 
                 <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-x-auto">
-                  <table className="w-full min-w-[900px]">
+                  <table className="w-full min-w-[1050px]">
                     <thead>
                       <tr className="border-b border-slate-700">
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Название</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Пользователь</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Телефон</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Платформы</th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Место показа</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Статус</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Бюджет</th>
                         <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-300">Действия</th>
@@ -940,6 +941,9 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
                             {campaign.platforms.join(', ')}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-300 text-xs sm:text-sm break-words">
+                            {campaign.location || <span className="text-gray-500">—</span>}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span className={`px-2 py-1 rounded text-xs ${
@@ -1088,6 +1092,17 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                         ))}
                       </div>
                     </div>
+
+                    {/* Location */}
+                    {selectedCampaign.location && (
+                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Globe className="w-5 h-5 text-green-400 flex-shrink-0" />
+                          <h4 className="text-white font-semibold text-sm">Место показа</h4>
+                        </div>
+                        <span className="text-gray-200 text-sm">{selectedCampaign.location}</span>
+                      </div>
+                    )}
 
                     {/* Ad Text */}
                     {selectedCampaign.audience?.adText && (

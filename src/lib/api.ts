@@ -553,6 +553,7 @@ export interface CampaignWithUser {
   conversions: number;
   imageUrl: string | null;
   phone: string | null;
+  location: string | null;
   audience: any;
   user: {
     phone: string;

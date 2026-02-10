@@ -103,6 +103,7 @@ model Campaign {
   conversions         Int      @default(0)
   imageUrl            String?
   phone               String?  // Телефон для приёма заявок
+  location            String?  // Место показа рекламы (город/регион)
   audience            Json?    // Сохраняем данные аудитории (interests, ageRange, adText, recommendations и т.д.)
   rejectionReason     String?  // Причина отклонения админом
   budgetPeriodDays    Int      @default(7)  // Период бюджета в днях (7 = неделя, 30 = месяц)
