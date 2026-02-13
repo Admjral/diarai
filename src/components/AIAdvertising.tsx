@@ -1080,14 +1080,17 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
   };
 
   const handleCreateCampaignWithConfirm = (data: CampaignFormData) => {
+    console.log('[Campaign] handleCreateCampaignWithConfirm called, data:', data);
     // Валидация перед отправкой
     const validationErrors = validateCampaignForm(data);
     if (validationErrors) {
+      console.log('[Campaign] Validation errors:', validationErrors);
       Object.keys(validationErrors).forEach((key) => {
         createForm.setError(key as keyof CampaignFormData, validationErrors[key]);
       });
       return;
     }
+    console.log('[Campaign] Validation passed, opening budget confirm');
     // Show budget confirmation dialog
     setPendingCampaignData(data);
     setBudgetConfirmOpen(true);
@@ -2323,7 +2326,15 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               </button>
             </div>
 
-            <form onSubmit={createForm.handleSubmit(handleCreateCampaignWithConfirm)} className="space-y-4">
+            <form onSubmit={createForm.handleSubmit(
+              (data) => {
+                console.log('[Campaign] handleSubmit success, data:', JSON.stringify(data));
+                handleCreateCampaignWithConfirm(data);
+              },
+              (errors) => {
+                console.log('[Campaign] handleSubmit VALIDATION FAILED:', JSON.stringify(errors));
+              }
+            )} className="space-y-4">
               <div>
                 <label className="text-gray-400 mb-2 block">{t.aiAdvertising.form.campaignName} <span className="text-red-400">*</span></label>
                 <input
