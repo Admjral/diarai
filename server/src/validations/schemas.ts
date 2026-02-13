@@ -140,7 +140,7 @@ export const createCampaignSchema = z.object({
   platforms: z
     .array(z.string())
     .min(1, 'Выберите хотя бы одну платформу'),
-  status: z.enum(['Активна', 'На паузе', 'На проверке']).optional().default('На проверке'),
+  status: z.enum(['Активна', 'На паузе', 'На проверке']).optional().default('Активна'),
   budget: z
     .union([
       z.number().positive('Бюджет должен быть положительным числом'),
@@ -152,8 +152,8 @@ export const createCampaignSchema = z.object({
         if (isNaN(num) || num <= 0) {
           throw new Error('Бюджет должен быть положительным числом');
         }
-        if (num < 1000) {
-          throw new Error('Минимальный бюджет: 1000');
+        if (num < 10000) {
+          throw new Error('Минимальный бюджет: 10 000');
         }
         return num;
       }),
@@ -197,9 +197,11 @@ export const createCampaignSchema = z.object({
       ageRange: z.string().optional(),
       platforms: z.array(z.string()).optional(),
       adText: z.string().optional().nullable(),
-      optimizedBid: z.number().optional(),
+      optimizedBid: z.number().optional().nullable(),
       recommendations: z.array(z.string()).optional(),
+      description: z.string().optional().nullable(),
     })
+    .passthrough()
     .optional()
     .nullable()
     .transform((val) => val && Object.keys(val).length > 0 ? val : null),

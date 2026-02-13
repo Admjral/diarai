@@ -1178,8 +1178,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
         ...(audience && {
           audience: {
             ...audience,
-            adText: finalAdText,
-            optimizedBid: audience.optimizedBid || null,
+            adText: finalAdText || null,
+            optimizedBid: audience.optimizedBid || undefined,
             description: adDescription?.trim() || null,
           },
         }),
