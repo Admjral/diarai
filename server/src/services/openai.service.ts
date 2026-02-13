@@ -269,6 +269,80 @@ export async function generateAudienceInterests(
 }
 
 /**
+ * AI-подбор возрастного диапазона для целевой аудитории
+ */
+export async function generateTargetAgeRange(
+  campaignName: string,
+  category: string,
+  platforms: string[],
+  budget: number,
+  location?: string,
+  description?: string,
+  platformDefaults?: Record<string, { min: number; max: number }>
+): Promise<{ minAge: number; maxAge: number } | null> {
+  if (!isGeminiAvailable() || !genAI) {
+    return null;
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    const platformInfo = platforms.join(', ');
+    const locationInfo = location ? `\nЛокация: ${location}` : '';
+    const descriptionInfo = description ? `\nОписание от пользователя: ${description}` : '';
+
+    let platformContext = '';
+    if (platformDefaults) {
+      const ranges = platforms
+        .filter(p => platformDefaults[p])
+        .map(p => `${p}: ${platformDefaults[p].min}-${platformDefaults[p].max}`)
+        .join(', ');
+      if (ranges) {
+        platformContext = `\nТиповые возрастные диапазоны платформ: ${ranges}`;
+      }
+    }
+
+    const prompt = `Определи оптимальный возрастной диапазон целевой аудитории для рекламной кампании.
+
+Кампания: "${campaignName}"
+Категория: ${category}
+Платформы: ${platformInfo}
+Бюджет: ${budget.toLocaleString()} тенге${locationInfo}${descriptionInfo}${platformContext}
+
+Правила:
+1. ЕСЛИ пользователь указал конкретный возрастной диапазон в описании — используй ЕГО (например "для студентов 18-25" → 18-25)
+2. ЕСЛИ пользователь указал целевую группу (например "молодёжь", "пенсионеры") — определи возраст по контексту
+3. Минимальный возраст не менее 16, максимальный не более 65
+4. Диапазон должен быть разумным (не менее 5 лет разницы)
+5. Учитывай платформы и категорию бизнеса
+
+Верни ТОЛЬКО два числа через дефис, например: 25-45`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+
+    const match = text.match(/(\d{1,2})\s*[-–—]\s*(\d{1,2})/);
+    if (match) {
+      let minAge = parseInt(match[1], 10);
+      let maxAge = parseInt(match[2], 10);
+
+      minAge = Math.max(16, Math.min(minAge, 60));
+      maxAge = Math.max(minAge + 5, Math.min(maxAge, 65));
+
+      log.info('AI возрастной диапазон подобран', { campaignName, minAge, maxAge, rawText: text });
+      return { minAge, maxAge };
+    }
+
+    log.warn('Не удалось распарсить AI возрастной диапазон', { text });
+    return null;
+  } catch (error) {
+    log.error('Ошибка AI подбора возрастного диапазона', error as Error, { campaignName });
+    return null;
+  }
+}
+
+/**
  * Проверка доступности генерации изображений
  */
 export function isImagenAvailable(): boolean {

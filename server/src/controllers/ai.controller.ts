@@ -5,6 +5,7 @@ import {
   analyzeCampaignCategory,
   generateAdImage,
   generateAudienceInterests,
+  generateTargetAgeRange,
   isOpenAIAvailable,
   getOpenAIStatus
 } from '../services/openai.service';
@@ -124,30 +125,33 @@ async function selectTargetAudience(data: AIAudienceRequest): Promise<AIAudience
   });
   
   // Вычисляем возрастной диапазон
-  const ageRanges = platforms
-    .map(p => platformAgeRanges[p])
-    .filter(Boolean);
-  
-  let minAge = Math.min(...ageRanges.map(r => r.min));
-  let maxAge = Math.max(...ageRanges.map(r => r.max));
-  
-  // Корректировка на основе бюджета
-  if (budget > 100000) {
-    // Большой бюджет - расширяем аудиторию
-    maxAge = Math.min(maxAge + 10, 65);
-    minAge = Math.max(minAge - 5, 18);
-  } else if (budget < 20000) {
-    // Малый бюджет - сужаем для лучшей конверсии
-    maxAge = Math.max(maxAge - 5, minAge + 5);
-  }
-  
-  // Корректировка на основе локации (если указана)
-  if (location) {
-    const locationLower = location.toLowerCase();
-    if (locationLower.includes('казахстан') || locationLower.includes('алматы') || locationLower.includes('астана')) {
-      // Для Казахстана немного расширяем возраст
-      maxAge = Math.min(maxAge + 3, 60);
+  let minAge: number;
+  let maxAge: number;
+
+  // Пробуем AI-подбор возрастного диапазона
+  if (isOpenAIAvailable()) {
+    try {
+      const aiAgeRange = await generateTargetAgeRange(
+        campaignName,
+        businessCategory,
+        platforms,
+        budget,
+        location,
+        description,
+        platformAgeRanges
+      );
+      if (aiAgeRange) {
+        minAge = aiAgeRange.minAge;
+        maxAge = aiAgeRange.maxAge;
+      } else {
+        ({ minAge, maxAge } = calculateFallbackAgeRange(platforms, platformAgeRanges, budget, location));
+      }
+    } catch (error) {
+      console.error('Ошибка AI подбора возрастного диапазона, используем fallback:', error);
+      ({ minAge, maxAge } = calculateFallbackAgeRange(platforms, platformAgeRanges, budget, location));
     }
+  } else {
+    ({ minAge, maxAge } = calculateFallbackAgeRange(platforms, platformAgeRanges, budget, location));
   }
   
   // Оптимизация ставки на основе бюджета и платформ
@@ -167,6 +171,40 @@ async function selectTargetAudience(data: AIAudienceRequest): Promise<AIAudience
     adText,
     recommendations,
   };
+}
+
+/**
+ * Fallback расчёт возрастного диапазона (захардкоженная логика)
+ * Используется когда Gemini API недоступен
+ */
+function calculateFallbackAgeRange(
+  platforms: string[],
+  platformAgeRanges: Record<string, { min: number; max: number }>,
+  budget: number,
+  location?: string
+): { minAge: number; maxAge: number } {
+  const ageRanges = platforms
+    .map(p => platformAgeRanges[p])
+    .filter(Boolean);
+
+  let minAge = Math.min(...ageRanges.map(r => r.min));
+  let maxAge = Math.max(...ageRanges.map(r => r.max));
+
+  if (budget > 100000) {
+    maxAge = Math.min(maxAge + 10, 65);
+    minAge = Math.max(minAge - 5, 18);
+  } else if (budget < 20000) {
+    maxAge = Math.max(maxAge - 5, minAge + 5);
+  }
+
+  if (location) {
+    const locationLower = location.toLowerCase();
+    if (locationLower.includes('казахстан') || locationLower.includes('алматы') || locationLower.includes('астана')) {
+      maxAge = Math.min(maxAge + 3, 60);
+    }
+  }
+
+  return { minAge, maxAge };
 }
 
 /**
@@ -219,9 +257,9 @@ export async function getAIAudience(req: Request, res: Response) {
       });
     }
     
-    if (!budget || typeof budget !== 'number' || budget < 1000) {
-      return res.status(400).json({ 
-        error: 'Бюджет должен быть числом не менее 1000' 
+    if (!budget || typeof budget !== 'number' || budget < 10000) {
+      return res.status(400).json({
+        error: 'Бюджет должен быть числом не менее 10 000'
       });
     }
     

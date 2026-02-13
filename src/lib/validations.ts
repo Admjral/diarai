@@ -23,9 +23,9 @@ export const campaignSchema = z.object({
     .refine(
       (val) => {
         const num = parseFloat(val.replace(/[^\d.]/g, ''));
-        return num >= 1000;
+        return num >= 10000;
       },
-      { message: 'Минимальный бюджет: ₸1,000' }
+      { message: 'Минимальный бюджет: ₸10,000' }
     ),
   phone: z
     .string()

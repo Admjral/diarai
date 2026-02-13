@@ -342,7 +342,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       const budgetNum = parseFloat(data.budget.replace(/[^\d.]/g, ''));
       if (isNaN(budgetNum) || budgetNum <= 0) {
         errors.budget = { message: t.aiAdvertising.validation.budgetPositive };
-      } else if (budgetNum < 1000) {
+      } else if (budgetNum < 10000) {
         errors.budget = { message: t.aiAdvertising.validation.budgetMin };
       }
     }
@@ -655,7 +655,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
     try {
       const budgetNum = parseFloat(budget.replace(/[^\d.]/g, ''));
       
-      if (isNaN(budgetNum) || budgetNum < 1000) {
+      if (isNaN(budgetNum) || budgetNum < 10000) {
         throw new Error(t.aiAdvertising.messages.budgetMinError);
       }
       
@@ -1166,7 +1166,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       const campaignData = {
         name: data.name.trim(),
         platforms: data.platforms,
-        status: t.aiAdvertising.status.onReview,
+        status: t.aiAdvertising.status.active,
         budget: budgetValue,
         budgetPeriodDays: periodDays, // Период бюджета в днях
         spent: 0, // Отправляем как число, а не строку
@@ -1202,8 +1202,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
       setUploadedImageFile(null);
       setAdDescription('');
       
-      const successMessage = t.aiAdvertising.messages.campaignSentForReview.replace('{name}', data.name.trim());
-      showToast(successMessage, 'info');
+      const successMessage = t.aiAdvertising.messages.campaignCreatedAndActive.replace('{name}', data.name.trim());
+      showToast(successMessage, 'success');
     } catch (error: any) {
       console.error('Ошибка создания кампании:', error);
       
@@ -2444,7 +2444,7 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         if (isNaN(num) || num <= 0) {
                           return t.aiAdvertising.validation.budgetPositive;
                         }
-                        if (num < 1000) {
+                        if (num < 10000) {
                           return t.aiAdvertising.validation.budgetMinValue;
                         }
                         if (num > walletBalance) {
@@ -2458,8 +2458,8 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                         setBudgetWarnings(getBudgetWarnings(platforms, val, periodDays));
                       },
                     })}
-                    placeholder={walletBalance > 0 ? `1,000 - ${walletBalance.toLocaleString()}` : '50000'}
-                    min="1000"
+                    placeholder={walletBalance > 0 ? `10,000 - ${walletBalance.toLocaleString()}` : '50000'}
+                    min="10000"
                     max={walletBalance > 0 ? walletBalance : undefined}
                     className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                       createForm.formState.errors.budget
@@ -3193,14 +3193,14 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
                       if (isNaN(num) || num <= 0) {
                         return t.aiAdvertising.validation.budgetPositive;
                       }
-                      if (num < 1000) {
+                      if (num < 10000) {
                         return t.aiAdvertising.validation.budgetMinValue;
                       }
                       return true;
                     },
                   })}
                   placeholder="50000"
-                  min="1000"
+                  min="10000"
                   className={`w-full bg-slate-900/50 border rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none ${
                     editForm.formState.errors.budget
                       ? 'border-red-500 focus:border-red-500'

@@ -176,8 +176,8 @@ export class CampaignsController {
         ? parseFloat(spent.replace(/[^\d.]/g, '')) || 0
         : (spent || 0);
 
-      if (!budgetNum || budgetNum < 1000) {
-        return res.status(400).json({ error: 'Минимальный бюджет: 1000₸' });
+      if (!budgetNum || budgetNum < 10000) {
+        return res.status(400).json({ error: 'Минимальный бюджет: 10 000₸' });
       }
 
       // Проверяем баланс кошелька
@@ -238,7 +238,7 @@ export class CampaignsController {
           userId,
           name,
           platform: platformString,
-          status: status || 'На проверке',
+          status: status || 'Активна',
           budget: budgetNum,
           spent: spentNum,
           conversions: conversions || 0,
