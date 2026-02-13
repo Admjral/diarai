@@ -1097,21 +1097,23 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
     setBudgetConfirmOpen(false);
     setPendingCampaignData(null);
     try {
-      // Автоматический подбор целевой аудитории с помощью AI
-      const audience = await selectTargetAudience(
-        data.name,
-        data.platforms,
-        data.budget,
-        adDescription || undefined,
-        data.phone,
-        data.location
-      );
-      
-      // Убеждаемся, что selectedAudience и generatedAdText установлены
-      if (audience) {
-        setSelectedAudience(audience);
-        if (audience.adText && audience.adText.trim().length > 0) {
-          setGeneratedAdText(audience.adText.trim());
+      // Используем уже подобранную аудиторию, если она есть, иначе подбираем через AI
+      let audience = selectedAudience;
+      if (!audience) {
+        audience = await selectTargetAudience(
+          data.name,
+          data.platforms,
+          data.budget,
+          adDescription || undefined,
+          data.phone,
+          data.location
+        );
+
+        if (audience) {
+          setSelectedAudience(audience);
+          if (audience.adText && audience.adText.trim().length > 0) {
+            setGeneratedAdText(audience.adText.trim());
+          }
         }
       }
       
