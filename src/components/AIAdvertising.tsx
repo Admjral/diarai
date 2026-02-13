@@ -3034,10 +3034,10 @@ export function AIAdvertising({ onNavigate, showToast }: AIAdvertisingProps) {
               <div className="flex gap-2 sm:gap-3 mt-6 flex-wrap">
                 <button
                   type="submit"
-                  disabled={isSelectingAudience || createForm.formState.isSubmitting}
+                  disabled={createForm.formState.isSubmitting}
                   className="flex-1 min-w-0 py-2 sm:py-3 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded-xl hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
-                  {isSelectingAudience ? t.aiAdvertising.form.selectAudience : createForm.formState.isSubmitting ? t.aiAdvertising.form.creating : t.aiAdvertising.form.createCampaign}
+                  {createForm.formState.isSubmitting ? t.aiAdvertising.form.creating : t.aiAdvertising.form.createCampaign}
                 </button>
                 <button
                   type="button"
