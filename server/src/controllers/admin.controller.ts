@@ -1054,7 +1054,7 @@ export async function adminEditCampaign(req: Request, res: Response) {
     }
 
     const { campaignId } = req.params;
-    const { name, adText, audience, budget, platform } = req.body;
+    const { name, adText, audience, budget, platform, imageUrl } = req.body;
 
     // Получаем текущую кампанию
     const campaign = await prisma.campaign.findUnique({
@@ -1106,6 +1106,11 @@ export async function adminEditCampaign(req: Request, res: Response) {
       const newAudience = { ...currentAudience, adText };
       changes.push({ fieldName: 'audience.adText', oldValue: currentAudience?.adText, newValue: adText });
       updateData.audience = newAudience;
+    }
+
+    if (imageUrl !== undefined && imageUrl !== campaign.imageUrl) {
+      changes.push({ fieldName: 'imageUrl', oldValue: campaign.imageUrl, newValue: imageUrl });
+      updateData.imageUrl = imageUrl;
     }
 
     if (changes.length === 0) {

@@ -1,4 +1,4 @@
-import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle, Globe } from 'lucide-react';
+import { ArrowLeft, Users, Megaphone, Wallet, BarChart3, Download, Search, Edit2, Power, Plus, Minus, DollarSign, Loader2, Shield, Upload, Menu, X, Target, Sparkles, CreditCard, Check, XCircle, Globe, ImagePlus } from 'lucide-react';
 import type { Screen } from '../types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { adminAPI, AdminStats, AdminUser, CampaignWithUser, WalletWithUser, paymentRequestAPI, PaymentRequest, walletTopUpAPI, WalletTopUpRequest } from '../lib/api';
@@ -58,7 +58,8 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
   // Модальное окно для деталей кампании
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignWithUser | null>(null);
   const [showCampaignDetailsModal, setShowCampaignDetailsModal] = useState(false);
-  
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   // Модальное окно для загрузки статистики кампании
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [selectedCampaignForStats, setSelectedCampaignForStats] = useState<CampaignWithUser | null>(null);
@@ -221,6 +222,43 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
       showToast(t.adminPanel.roleUpdateError, 'error');
     }
   }, [loadUsers, showToast, t]);
+
+  // Загрузка изображения для кампании из админ-панели
+  const handleUploadCampaignImage = useCallback(async (file: File) => {
+    if (!selectedCampaign?.id) return;
+    setIsUploadingImage(true);
+    try {
+      // Конвертируем файл в base64
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Загружаем на сервер
+      const { request } = await import('../lib/api');
+      const uploadResponse = await request<{ imageUrl: string }>('/api/campaigns/upload-image', {
+        method: 'POST',
+        body: JSON.stringify({ image: base64, fileName: file.name }),
+      });
+
+      if (!uploadResponse.imageUrl) throw new Error('Сервер не вернул URL');
+
+      // Обновляем кампанию через admin API
+      await adminAPI.editCampaign(selectedCampaign.id, { imageUrl: uploadResponse.imageUrl });
+
+      // Обновляем локальный state
+      setSelectedCampaign(prev => prev ? { ...prev, imageUrl: uploadResponse.imageUrl } : null);
+      setCampaigns(prev => prev.map(c => c.id === selectedCampaign.id ? { ...c, imageUrl: uploadResponse.imageUrl } : c));
+      showToast('Изображение загружено', 'success');
+    } catch (error: any) {
+      console.error('Ошибка загрузки изображения:', error);
+      showToast(error.message || 'Ошибка загрузки изображения', 'error');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }, [selectedCampaign]);
 
   // Переключение статуса кампании
   const handleToggleCampaign = useCallback(async (campaignId: number, currentStatus: string) => {
@@ -1120,21 +1158,52 @@ export function AdminPanel({ onNavigate, showToast }: AdminPanelProps) {
                     )}
 
                     {/* Ad Image */}
-                    {selectedCampaign.imageUrl && (
-                      <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
-                        <div className="flex items-center gap-2 mb-4">
+                    <div className="bg-slate-900/40 rounded-xl p-4 sm:p-5 border border-slate-700/50">
+                      <div className="flex items-center justify-between gap-2 mb-4">
+                        <div className="flex items-center gap-2">
                           <Upload className="w-5 h-5 text-yellow-400 flex-shrink-0" />
                           <h4 className="text-white font-semibold text-sm">Изображение кампании</h4>
                         </div>
+                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isUploadingImage ? 'bg-slate-700 text-gray-400 cursor-wait' : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-500/30'}`}>
+                          {isUploadingImage ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Загрузка...</>
+                          ) : (
+                            <><ImagePlus className="w-3.5 h-3.5" /> {selectedCampaign.imageUrl ? 'Заменить' : 'Загрузить'}</>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={isUploadingImage}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 10 * 1024 * 1024) {
+                                  showToast('Максимальный размер файла: 10 МБ', 'error');
+                                  return;
+                                }
+                                handleUploadCampaignImage(file);
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {selectedCampaign.imageUrl ? (
                         <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
-                          <img 
-                            src={selectedCampaign.imageUrl} 
+                          <img
+                            src={selectedCampaign.imageUrl}
                             alt={selectedCampaign.name}
                             className="w-full max-w-full h-auto rounded-lg object-contain"
                           />
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700/30 border-dashed flex flex-col items-center gap-2 text-gray-500">
+                          <ImagePlus className="w-8 h-8" />
+                          <span className="text-xs">Нет изображения</span>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Budget & Performance */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

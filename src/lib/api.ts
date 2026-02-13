@@ -817,6 +817,7 @@ export const adminAPI = {
     audience?: any;
     budget?: number;
     platform?: string;
+    imageUrl?: string;
   }) =>
     request<{ success: boolean; campaign: any; changes: number; message: string }>(`/api/admin/campaigns/${campaignId}/edit`, {
       method: 'PUT',
