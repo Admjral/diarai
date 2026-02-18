@@ -7,6 +7,10 @@ import { MessengerType, ConversationStatus, MessageSenderType, MessageDeliverySt
 const MESSENGER_SERVICE_URL = process.env.MESSENGER_SERVICE_URL || 'http://localhost:3002';
 const MESSENGER_API_KEY = process.env.MESSENGER_API_KEY || '';
 
+// In-memory QR cache to avoid hammering messenger-service
+const qrCache = new Map<number, { data: any; timestamp: number }>();
+const QR_CACHE_TTL = 10000; // 10 seconds
+
 // =====================
 // CONFIG ENDPOINTS
 // =====================
@@ -211,6 +215,12 @@ export async function getWhatsAppQR(req: Request, res: Response) {
 
     const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
 
+    // Check cache first
+    const cached = qrCache.get(userIdNum);
+    if (cached && Date.now() - cached.timestamp < QR_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
     // Получаем sessionId из конфига
     const config = await prisma.messengerConfig.findUnique({
       where: {
@@ -229,11 +239,13 @@ export async function getWhatsAppQR(req: Request, res: Response) {
     const response = await axios.get(
       `${MESSENGER_SERVICE_URL}/session/whatsapp/${config.sessionId}/qr`,
       {
-        headers: {
-          'X-API-Key': MESSENGER_API_KEY,
-        },
+        headers: { 'X-API-Key': MESSENGER_API_KEY },
+        timeout: 10000,
       }
     );
+
+    // Cache the response
+    qrCache.set(userIdNum, { data: response.data, timestamp: Date.now() });
 
     res.json(response.data);
   } catch (error) {

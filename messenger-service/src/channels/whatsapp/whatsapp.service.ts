@@ -20,6 +20,8 @@ export class WhatsAppService {
   private client: AxiosInstance;
   private evolutionUrl: string;
   private apiKey: string;
+  private qrCache: Map<string, { data: EvolutionQRCode; timestamp: number }> = new Map();
+  private static QR_CACHE_TTL = 15000; // 15 seconds
 
   constructor() {
     this.evolutionUrl = process.env.EVOLUTION_API_URL || process.env.WAHA_URL || 'http://localhost:8080';
@@ -106,18 +108,31 @@ export class WhatsAppService {
   async getQRCode(sessionId: string): Promise<EvolutionQRCode> {
     const instanceName = this.sanitizeInstanceName(sessionId);
 
+    // Check cache first
+    const cached = this.qrCache.get(instanceName);
+    if (cached && Date.now() - cached.timestamp < WhatsAppService.QR_CACHE_TTL) {
+      return cached.data;
+    }
+
     try {
-      const response = await this.client.get(`/instance/connect/${instanceName}`);
+      const response = await this.client.get(`/instance/connect/${instanceName}`, { timeout: 10000 });
 
       // Evolution API возвращает QR в разных форматах
       const data = response.data;
 
-      return {
+      const qr: EvolutionQRCode = {
         code: data.code || data.qrcode?.code || '',
         base64: data.base64 || data.qrcode?.base64 || '',
         pairingCode: data.pairingCode || data.qrcode?.pairingCode,
         count: data.count || data.qrcode?.count || 0,
       };
+
+      // Cache the QR code
+      if (qr.base64 || qr.code) {
+        this.qrCache.set(instanceName, { data: qr, timestamp: Date.now() });
+      }
+
+      return qr;
     } catch (error: any) {
       // Если instance уже подключен, QR не нужен
       if (error?.response?.status === 404 || error?.response?.data?.message?.includes('connected')) {
