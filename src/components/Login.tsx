@@ -494,7 +494,15 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
                 <X size={20} />
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 pr-2 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+            <div
+              className="overflow-y-auto flex-1 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed pr-3"
+              style={{
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#475569 #1e293b',
+              }}
+            >
               {USER_AGREEMENT}
             </div>
             <div className="pt-4 border-t border-slate-700 flex justify-end">
