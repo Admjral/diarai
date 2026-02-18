@@ -19,8 +19,28 @@
       minify: process.env.DISABLE_MINIFY !== 'true' ? 'esbuild' : false,
       rollupOptions: {
         output: {
-          chunkSizeWarningLimit: 1000,
           format: 'es',
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-ui': [
+              '@radix-ui/react-alert-dialog',
+              '@radix-ui/react-dialog',
+              '@radix-ui/react-dropdown-menu',
+              '@radix-ui/react-label',
+              '@radix-ui/react-scroll-area',
+              '@radix-ui/react-separator',
+              '@radix-ui/react-slot',
+              '@radix-ui/react-switch',
+              '@radix-ui/react-tabs',
+            ],
+            'vendor-utils': [
+              'zod',
+              'react-hook-form',
+              'clsx',
+              'tailwind-merge',
+              'class-variance-authority',
+            ],
+          },
         },
         // Tree-shaking включен для оптимизации размера бандла
         // Если возникают проблемы, установите DISABLE_TREESHAKE=true

@@ -19,15 +19,19 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # Production stage
-FROM node:20-slim
+FROM nginx:alpine
 
 WORKDIR /app
 
-# Install serve
-RUN npm install -g serve@14
-
-# Copy only built files
+# Copy built files and nginx config template
 COPY --from=builder /app/dist ./dist
+COPY nginx.conf.template /tmp/nginx.conf.template
 
-# Serve static files on Railway's PORT
-CMD serve -s dist -l ${PORT:-3000}
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Default PORT (Railway sets this at runtime)
+ENV PORT=3000
+
+# Substitute PORT in nginx config and start nginx
+CMD sh -c "envsubst '\${PORT}' < /tmp/nginx.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"

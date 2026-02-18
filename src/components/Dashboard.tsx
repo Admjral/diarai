@@ -26,14 +26,18 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
   const [welcomeDismissed, setWelcomeDismissed] = useState(() => localStorage.getItem('diar_welcome_dismissed') === 'true');
   const { signOut } = useAuth();
 
-  // Загрузка данных дашборда
+  // Загрузка данных дашборда и уведомлений параллельно
   useEffect(() => {
-    const loadDashboardData = async () => {
+    const loadInitialData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await dashboardAPI.getStats();
+        const [data, { count }] = await Promise.all([
+          dashboardAPI.getStats(),
+          notificationsAPI.getUnreadCount(),
+        ]);
         setDashboardData(data);
+        setUnreadNotificationsCount(count);
       } catch (err: any) {
         console.error('Ошибка при загрузке данных дашборда:', err);
         setError(err?.message || t.dashboard.loadingError);
@@ -43,25 +47,19 @@ export const Dashboard = memo(function Dashboard({ user, onNavigate, showToast }
       }
     };
 
-    loadDashboardData();
-  }, [showToast]);
+    loadInitialData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Загрузка количества непрочитанных уведомлений
+  // Автообновление уведомлений каждые 30 секунд
   useEffect(() => {
-    const loadUnreadCount = async () => {
+    const interval = setInterval(async () => {
       try {
         const { count } = await notificationsAPI.getUnreadCount();
         setUnreadNotificationsCount(count);
-      } catch (err: any) {
-        console.error('Ошибка при загрузке количества уведомлений:', err);
+      } catch {
         // Не показываем ошибку пользователю, так как это не критично
       }
-    };
-
-    loadUnreadCount();
-    
-    // Автообновление каждые 30 секунд
-    const interval = setInterval(loadUnreadCount, 30000);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 

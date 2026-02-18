@@ -1,39 +1,47 @@
 server {
     listen ${PORT};
     server_name _;
-    root /usr/share/nginx/html;
+    root /app/dist;
     index index.html;
 
     # Gzip compression
     gzip on;
     gzip_vary on;
-    gzip_min_length 1024;
-    gzip_proxied expired no-cache no-store private auth;
-    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript;
+    gzip_comp_level 6;
+    gzip_proxied any;
+    gzip_min_length 256;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml+rss image/svg+xml;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
-    # SPA routing - все запросы направляем на index.html
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Кэширование статических файлов
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    # Cache hashed assets for 1 year (Vite adds content hash to filenames)
+    location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        add_header Vary "Accept-Encoding";
     }
 
-    # Не кэшировать index.html
+    # Static files in root (kaspi-qr.png etc.)
+    location ~* \.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # Never cache index.html
     location = /index.html {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate";
     }
 
-    # Health check для Railway
+    # SPA routing — serve index.html for all routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Health check for Railway
     location /health {
         access_log off;
         return 200 "OK";
