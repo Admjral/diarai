@@ -1,0 +1,134 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: diarai-postgres
+    environment:
+      POSTGRES_DB: diarai
+      POSTGRES_USER: diarai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - diarai-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diarai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: diarai-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - diarai-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./server
+    container_name: diarai-backend
+    env_file: .env.vps
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_URL: postgresql://diarai:${POSTGRES_PASSWORD}@postgres:5432/diarai
+      BACKEND_URL: http://185.129.48.195
+      FRONTEND_URL: http://185.129.48.195
+      MESSENGER_SERVICE_URL: http://messenger-service:3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - diarai-network
+
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: diarai-evolution-api
+    environment:
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      WEBHOOK_GLOBAL_URL: http://messenger-service:3002/webhook/whatsapp
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+      DATABASE_ENABLED: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      LOG_LEVEL: ERROR
+      PORT: 8080
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    restart: unless-stopped
+    networks:
+      - diarai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  messenger-service:
+    build:
+      context: ./messenger-service
+    container_name: diarai-messenger-service
+    env_file: .env.vps
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      EVOLUTION_API_URL: http://evolution-api:8080
+      WAHA_URL: http://evolution-api:8080
+      REDIS_URL: redis://redis:6379
+      DIAR_BACKEND_URL: http://backend:3001
+    depends_on:
+      evolution-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - diarai-network
+
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_URL: http://185.129.48.195
+    container_name: diarai-frontend
+    command: ["nginx", "-g", "daemon off;"]
+    volumes:
+      - ./nginx.vps.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - diarai-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+  evolution_store:
+  uploads:
+
+networks:
+  diarai-network:
+    driver: bridge
