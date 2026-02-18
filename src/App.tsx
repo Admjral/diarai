@@ -16,15 +16,30 @@ import { Toast } from './components/Toast';
 import { ServerErrorFallback } from './components/ServerErrorFallback';
 import { LoadingSpinner } from './components/LoadingSpinner';
 
+// Auto-reload on chunk load failure (after deploys)
+function lazyWithRetry<T extends { [key: string]: any }>(
+  factory: () => Promise<T>,
+  pick: keyof T
+) {
+  return lazy(() =>
+    factory()
+      .then(m => ({ default: m[pick] as React.ComponentType<any> }))
+      .catch(() => {
+        window.location.reload();
+        return new Promise(() => {}); // never resolves, page is reloading
+      })
+  );
+}
+
 // Lazy loading для тяжелых компонентов
-const CRM = lazy(() => import('./components/CRM').then(m => ({ default: m.CRM })));
-const AIAdvertising = lazy(() => import('./components/AIAdvertising').then(m => ({ default: m.AIAdvertising })));
-const Integrations = lazy(() => import('./components/Integrations').then(m => ({ default: m.Integrations })));
-const Subscription = lazy(() => import('./components/Subscription').then(m => ({ default: m.Subscription })));
-const Support = lazy(() => import('./components/Support').then(m => ({ default: m.Support })));
-const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
-const Notifications = lazy(() => import('./components/Notifications').then(m => ({ default: m.Notifications })));
-const MessengerInbox = lazy(() => import('./components/MessengerInbox').then(m => ({ default: m.MessengerInbox })));
+const CRM = lazyWithRetry(() => import('./components/CRM'), 'CRM');
+const AIAdvertising = lazyWithRetry(() => import('./components/AIAdvertising'), 'AIAdvertising');
+const Integrations = lazyWithRetry(() => import('./components/Integrations'), 'Integrations');
+const Subscription = lazyWithRetry(() => import('./components/Subscription'), 'Subscription');
+const Support = lazyWithRetry(() => import('./components/Support'), 'Support');
+const AdminPanel = lazyWithRetry(() => import('./components/AdminPanel'), 'AdminPanel');
+const Notifications = lazyWithRetry(() => import('./components/Notifications'), 'Notifications');
+const MessengerInbox = lazyWithRetry(() => import('./components/MessengerInbox'), 'MessengerInbox');
 
 function AppContent() {
   const { user: authUser, loading } = useAuth();
