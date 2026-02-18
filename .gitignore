@@ -53,9 +53,10 @@ messenger-service/*.log
 
 .vercel
 
-# Credentials
+# Credentials & sensitive docs
 credentinals.txt
 credentials.txt
 credentials.md
 *.credentials
 .env.vps
+CLAUDE.md
