@@ -3,12 +3,6 @@ import { Phone, Lock, Globe, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { Language } from '../lib/translations';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
 import { ButtonSpinner } from './LoadingSpinner';
 
 // Текст пользовательского соглашения
@@ -487,29 +481,36 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
       </div>
 
       {/* User Agreement Modal */}
-      <Dialog open={showAgreement} onOpenChange={setShowAgreement}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-yellow-500 text-xl">
-              {t.login.privacyPolicy}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="overflow-y-auto flex-1 pr-2 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">
-            {USER_AGREEMENT}
+      {showAgreement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAgreement(false)}>
+          <div className="fixed inset-0 bg-black/60" />
+          <div
+            className="relative z-50 bg-slate-900 border border-slate-700 text-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-yellow-500 text-xl font-semibold">{t.login.privacyPolicy}</h2>
+              <button onClick={() => setShowAgreement(false)} className="text-gray-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 pr-2 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">
+              {USER_AGREEMENT}
+            </div>
+            <div className="pt-4 border-t border-slate-700 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowAgreement(false);
+                  setAgreed(true);
+                }}
+                className="px-6 py-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 text-black rounded-lg hover:shadow-lg hover:shadow-yellow-500/30 transition-all"
+              >
+                {t.login.acceptAgreement || 'Принимаю'}
+              </button>
+            </div>
           </div>
-          <div className="pt-4 border-t border-slate-700 flex justify-end">
-            <button
-              onClick={() => {
-                setShowAgreement(false);
-                setAgreed(true);
-              }}
-              className="px-6 py-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 text-black rounded-lg hover:shadow-lg hover:shadow-yellow-500/30 transition-all"
-            >
-              {t.login.acceptAgreement || 'Принимаю'}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 });
