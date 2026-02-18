@@ -79,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearAuth = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem('diar_current_screen');
     sessionStorage.removeItem('userPhone');
     sessionStorage.removeItem('userId');
     setToken(null);

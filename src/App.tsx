@@ -30,7 +30,15 @@ function AppContent() {
   const { user: authUser, loading } = useAuth();
   const { isConnected, isChecking, error: connectionError, checkConnection } = useServerConnection();
   const { t } = useLanguage();
-  const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
+  const [currentScreen, setCurrentScreenState] = useState<Screen>(() => {
+    const saved = localStorage.getItem('diar_current_screen') as Screen | null;
+    return saved || 'onboarding';
+  });
+
+  const setCurrentScreen = useCallback((screen: Screen) => {
+    setCurrentScreenState(screen);
+    localStorage.setItem('diar_current_screen', screen);
+  }, []);
   const [user, setUser] = useState<{ name: string; plan: 'Start' | 'Pro' | 'Business'; role?: 'user' | 'admin' } | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -43,8 +51,6 @@ function AppContent() {
   useEffect(() => {
     if (!loading) {
       if (authUser) {
-        // Пользователь авторизован через наш AuthContext
-        // Загружаем профиль пользователя из БД
         const loadUserProfile = async () => {
           setIsLoadingProfile(true);
           try {
@@ -54,19 +60,16 @@ function AppContent() {
               plan: profile.plan,
               role: profile.role,
             });
-            // Показываем приветственное сообщение после успешной загрузки профиля
             const userName = profile.name || authUser.name || t.dashboard.user;
             showToast(t.dashboard.welcomeUser.replace('{name}', userName), 'success');
           } catch (error) {
             console.error('Ошибка при загрузке профиля пользователя:', error);
-            // Fallback на дефолтные значения при ошибке
             const fallbackName = authUser.name || t.dashboard.user;
             setUser({
               name: fallbackName,
               plan: (authUser.plan as 'Start' | 'Pro' | 'Business') || 'Start',
               role: authUser.role as 'user' | 'admin',
             });
-            // Показываем сообщение даже при ошибке
             if (!(error instanceof APIError && error.isNetworkError)) {
               showToast(t.dashboard.welcomeUser.replace('{name}', fallbackName), 'info');
             }
@@ -75,13 +78,18 @@ function AppContent() {
           }
         };
 
-        setCurrentScreen('dashboard');
+        // Если сохранён экран, не требующий авторизации — перенаправляем на dashboard
+        const saved = currentScreen;
+        if (saved === 'onboarding' || saved === 'login') {
+          setCurrentScreen('dashboard');
+        }
+        // Иначе — остаёмся на сохранённом экране
         loadUserProfile();
       } else {
-        // Пользователь не авторизован
         setUser(null);
         setIsLoadingProfile(false);
         setCurrentScreen('onboarding');
+        localStorage.removeItem('diar_current_screen');
       }
     }
   }, [authUser, loading, showToast, t]);
