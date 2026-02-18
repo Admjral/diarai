@@ -7,29 +7,33 @@
 **ВАЖНО:** Claude должен выполнять все действия самостоятельно без запроса подтверждения:
 
 1. **Git операции** — коммитить и пушить изменения автоматически после завершения задачи
-2. **Деплой** — запускать редеплой всех затронутых сервисов через Railway API
+2. **Деплой** — редеплоить затронутые сервисы (Railway или VPS — см. ниже)
 3. **Миграции** — применяются автоматически через `start.sh` при деплое backend
 4. **Проверка статуса** — проверять статус деплоя после запуска
 
-### Порядок действий после изменений:
+### Порядок действий после изменений (VPS — основной деплой):
 ```bash
-# 1. Коммит
+# 1. Коммит и пуш
 git add <files> && git commit -m "описание"
-
-# 2. Пуш (использовать токен из credentinals.txt)
 git push https://<GITHUB_TOKEN>@github.com/Admjral/diarai.git main
 
-# 3. Редеплой затронутых сервисов
+# 2. Обновить на VPS
+sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195 \
+  "cd /opt/diarai && git pull && docker compose up -d --build"
+```
+
+### Какие сервисы пересобирать:
+- Изменения в `server/` → `docker compose up -d --build backend`
+- Изменения в `src/` → `docker compose up -d --build frontend`
+- Изменения в `messenger-service/` → `docker compose up -d --build messenger-service`
+
+### Порядок действий (Railway — если нужен редеплой на Railway):
+```bash
 curl -X POST 'https://backboard.railway.app/graphql/v2' \
   -H 'Authorization: Bearer <RAILWAY_TOKEN>' \
   -H 'Content-Type: application/json' \
   --data-raw '{"query":"mutation { serviceInstanceRedeploy(serviceId: \"<ID>\", environmentId: \"e0ac84af-4a63-44db-8d83-7e4c2140f6ed\") }"}'
 ```
-
-### Какие сервисы редеплоить:
-- Изменения в `server/` → backend
-- Изменения в `src/` → frontend
-- Изменения в `messenger-service/` → messenger-service
 
 ---
 
@@ -45,8 +49,51 @@ curl -X POST 'https://backboard.railway.app/graphql/v2' \
 | environment | `e0ac84af-4a63-44db-8d83-7e4c2140f6ed` |
 | project | `9359e0b8-249a-4fbd-93c0-d67a6139f954` |
 
+## VPS Сервер (основной деплой)
+
+| Параметр | Значение |
+|----------|----------|
+| IP | `185.129.48.195` |
+| User | `root` |
+| SSH | `sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195` |
+| Путь | `/opt/diarai` |
+| Конфиг | `/opt/diarai/.env.vps` (не в git) |
+| БД | Локальный PostgreSQL в Docker (данные перенесены из Neon.tech) |
+
+### Docker Compose управление
+```bash
+# Статус
+sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195 "cd /opt/diarai && docker compose ps"
+
+# Логи
+sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195 "cd /opt/diarai && docker compose logs backend --tail 30"
+
+# Перезапуск всего
+sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195 "cd /opt/diarai && docker compose restart"
+
+# Пересборка одного сервиса
+sshpass -p 'mOVuJT7Ebg$r' ssh root@185.129.48.195 "cd /opt/diarai && docker compose up -d --build backend"
+```
+
+### Файлы Docker Compose
+| Файл | Назначение |
+|------|-----------|
+| `docker-compose.yml` | Все 6 сервисов |
+| `nginx.vps.conf` | nginx: `/api/` → backend:3001, `/webhook/` → messenger:3002 |
+| `.env.vps` | Переменные окружения (не в git!) |
+
+---
+
 ## URLs
 
+### VPS (текущий основной)
+| Сервис | URL |
+|--------|-----|
+| Frontend | `http://185.129.48.195` |
+| Backend API | `http://185.129.48.195/api/` (через nginx proxy) |
+| Webhook | `http://185.129.48.195/webhook/` |
+
+### Railway (резервный / старый)
 | Сервис | URL |
 |--------|-----|
 | Backend | `https://backend-production-be6a0.up.railway.app` |
@@ -379,3 +426,11 @@ curl https://evolution-api-production-76ab.up.railway.app/instance/fetchInstance
     - `DATABASE_SAVE_DATA_INSTANCE=true`
 26. **Чаты WhatsApp не загружаются** — если телефон показывает "подключено", но чаты пустые, проверь Evolution API `/instance/fetchInstances`. Если массив пуст `[]`, нужно пересканировать QR код
 27. **Бюджет кампаний списывается с кошелька** — при создании кампании бюджет резервируется с кошелька пользователя (тип транзакции `campaign_budget`). Кампанию нельзя создать если баланс меньше бюджета. Период бюджета: 7/30/custom дней
+28. **Frontend НЕ React Native** — обычный React 18 SPA на Vite. Производительность улучшена: nginx gzip, vendor chunk splitting, удалены мёртвые зависимости (xlsx, papaparse, @hookform/resolvers)
+29. **Docker Compose build context для backend** — в `docker-compose.yml` указывать `context: .` и `dockerfile: server/Dockerfile`, НЕ `context: ./server`. Backend Dockerfile написан для корневого контекста (как Railway)
+30. **Docker Compose переменные подстановки** — `${VAR}` в docker-compose.yml читаются из `.env` файла в той же директории (или `--env-file`). `env_file:` добавляет переменные ВНУТРЬ контейнера, но не в подстановку compose-файла. Создавать симлинк: `ln -sf .env.vps .env`
+31. **Evolution API healthcheck без curl** — образ `atendai/evolution-api:latest` не содержит curl. Использовать `wget -qO- http://localhost:8080/` или `service_started` вместо `service_healthy`
+32. **pg_dump версия** — pg_dump должен совпадать с версией сервера. Neon.tech использует PostgreSQL 16. Для дампа и восстановления использовать `docker run --rm postgres:16-alpine pg_dump/pg_restore`
+33. **nginx resolver для Docker upstreams** — при использовании переменных в `proxy_pass` (для lazy resolution) обязательно добавить `resolver 127.0.0.11 valid=10s;` — это Docker's internal DNS. Без него nginx не стартует если upstream недоступен
+34. **Evolution API DATABASE_ENABLED=false** — в новых версиях даже при отключённой БД требует валидный `DATABASE_PROVIDER`. Лучше включить БД: `DATABASE_ENABLED=true`, `DATABASE_PROVIDER=postgresql`, `DATABASE_CONNECTION_URI=...?schema=evolution`
+35. **VPS деплой приоритет** — основной деплой теперь на VPS 185.129.48.195 через Docker Compose, Railway используется как резервный/старый
