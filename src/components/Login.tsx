@@ -485,7 +485,7 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAgreement(false)}>
           <div className="fixed inset-0 bg-black/60" />
           <div
-            className="relative z-50 bg-slate-900 border border-slate-700 text-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col p-6"
+            className="relative z-50 bg-slate-900 border border-slate-700 text-white rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -494,7 +494,7 @@ export const Login = memo(function Login({ onLogin }: LoginProps) {
                 <X size={20} />
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 pr-2 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">
+            <div className="overflow-y-auto flex-1 pr-2 text-gray-300 text-sm whitespace-pre-wrap leading-relaxed" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
               {USER_AGREEMENT}
             </div>
             <div className="pt-4 border-t border-slate-700 flex justify-end">
