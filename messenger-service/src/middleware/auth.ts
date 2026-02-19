@@ -22,13 +22,14 @@ export function serviceAuthMiddleware(req: Request, res: Response, next: NextFun
   const apiKey = req.headers['x-api-key'] as string;
   const expectedKey = process.env.DIAR_API_KEY;
 
-  log.debug('Auth middleware', {
+  log.info('[Auth] Service auth check', {
     path: req.path,
     method: req.method,
     hasApiKey: !!apiKey,
-    apiKeyLength: apiKey?.length,
+    apiKeyPrefix: apiKey?.substring(0, 8) || 'none',
     hasExpectedKey: !!expectedKey,
     keysMatch: apiKey === expectedKey,
+    userId: req.headers['x-user-id'] || 'none',
   });
 
   if (!expectedKey) {

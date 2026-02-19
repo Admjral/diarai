@@ -49,6 +49,8 @@ export class WhatsAppService {
     const instanceName = this.sanitizeInstanceName(sessionId);
     const webhookUrl = `${process.env.MESSENGER_SERVICE_URL || 'http://localhost:3002'}/webhook/whatsapp`;
 
+    log.info('[WA:createSession] Starting', { sessionId, instanceName, webhookUrl, evolutionUrl: this.evolutionUrl });
+
     const instanceConfig = {
       instanceName,
       qrcode: true,
@@ -73,11 +75,16 @@ export class WhatsAppService {
     };
 
     try {
+      log.info('[WA:createSession] Sending POST /instance/create', { instanceName });
       const response = await this.client.post<EvolutionCreateInstanceResponse>(
         '/instance/create',
         instanceConfig
       );
-      log.info('WhatsApp instance created', { instanceName, sessionId });
+      log.info('[WA:createSession] Instance created successfully', {
+        instanceName,
+        instanceId: response.data.instance?.instanceId,
+        hash: response.data.hash ? 'present' : 'missing',
+      });
 
       return {
         instanceName: response.data.instance.instanceName,
@@ -87,17 +94,26 @@ export class WhatsAppService {
         apikey: response.data.hash,
       };
     } catch (error: any) {
+      const errStatus = error?.response?.status;
+      const errData = error?.response?.data;
+      const errMsg = errData?.message || error?.message;
+
+      log.warn('[WA:createSession] Error from Evolution API', {
+        sessionId, instanceName, status: errStatus, message: errMsg,
+        responseData: JSON.stringify(errData || {}).substring(0, 500),
+      });
+
       // Instance уже существует - получаем статус
       if (
-        error?.response?.status === 403 ||
-        error?.response?.status === 400 ||
-        error?.response?.data?.message?.includes('already') ||
-        error?.response?.data?.message?.includes('exists')
+        errStatus === 403 ||
+        errStatus === 400 ||
+        errMsg?.includes('already') ||
+        errMsg?.includes('exists')
       ) {
-        log.info('Instance already exists, fetching status', { instanceName });
+        log.info('[WA:createSession] Instance already exists, fetching status', { instanceName });
         return this.getSessionStatus(sessionId);
       }
-      log.error('Failed to create WhatsApp instance', error, { sessionId });
+      log.error('[WA:createSession] Failed to create WhatsApp instance', error, { sessionId });
       throw error;
     }
   }
@@ -111,14 +127,28 @@ export class WhatsAppService {
     // Check cache first
     const cached = this.qrCache.get(instanceName);
     if (cached && Date.now() - cached.timestamp < WhatsAppService.QR_CACHE_TTL) {
+      log.info('[WA:getQR] Returning cached QR', { instanceName, cacheAge: Date.now() - cached.timestamp });
       return cached.data;
     }
 
     try {
+      log.info('[WA:getQR] Requesting QR from Evolution API', { instanceName, url: `/instance/connect/${instanceName}` });
       const response = await this.client.get(`/instance/connect/${instanceName}`, { timeout: 10000 });
 
       // Evolution API возвращает QR в разных форматах
       const data = response.data;
+
+      log.info('[WA:getQR] Evolution API response', {
+        instanceName,
+        hasCode: !!data.code,
+        hasBase64: !!(data.base64),
+        hasQrcodeObj: !!data.qrcode,
+        hasQrcodeBase64: !!(data.qrcode?.base64),
+        hasPairingCode: !!data.pairingCode,
+        count: data.count || data.qrcode?.count,
+        responseKeys: Object.keys(data).join(','),
+        base64Length: (data.base64 || data.qrcode?.base64 || '').length,
+      });
 
       const qr: EvolutionQRCode = {
         code: data.code || data.qrcode?.code || '',
@@ -130,20 +160,33 @@ export class WhatsAppService {
       // Cache the QR code
       if (qr.base64 || qr.code) {
         this.qrCache.set(instanceName, { data: qr, timestamp: Date.now() });
+        log.info('[WA:getQR] QR cached', { instanceName, base64Length: qr.base64.length, codeLength: qr.code.length });
+      } else {
+        log.warn('[WA:getQR] No QR data in response', { instanceName });
       }
 
       return qr;
     } catch (error: any) {
+      const errStatus = error?.response?.status;
+      const errData = error?.response?.data;
+      const errMsg = errData?.message || error?.message;
+
+      log.warn('[WA:getQR] Error getting QR', {
+        instanceName, status: errStatus, message: errMsg,
+        code: error?.code,
+        responseData: JSON.stringify(errData || {}).substring(0, 500),
+      });
+
       // Если instance уже подключен, QR не нужен
-      if (error?.response?.status === 404 || error?.response?.data?.message?.includes('connected')) {
-        log.info('Instance already connected, no QR needed', { sessionId });
+      if (errStatus === 404 || errMsg?.includes('connected')) {
+        log.info('[WA:getQR] Instance already connected, no QR needed', { sessionId });
         return {
           code: '',
           base64: '',
           count: 0,
         };
       }
-      log.error('Failed to get QR code', error, { sessionId });
+      log.error('[WA:getQR] Failed to get QR code', error, { sessionId });
       throw error;
     }
   }
@@ -155,9 +198,19 @@ export class WhatsAppService {
     const instanceName = this.sanitizeInstanceName(sessionId);
 
     try {
+      log.info('[WA:getStatus] Requesting status', { instanceName, url: `/instance/connectionState/${instanceName}` });
       const response = await this.client.get(`/instance/connectionState/${instanceName}`);
 
       const state = response.data?.instance?.state || response.data?.state || 'close';
+
+      log.info('[WA:getStatus] Status received', {
+        instanceName,
+        state,
+        instanceId: response.data?.instance?.instanceId || 'none',
+        profileName: response.data?.instance?.profileName || 'none',
+        responseKeys: Object.keys(response.data || {}).join(','),
+        instanceKeys: Object.keys(response.data?.instance || {}).join(','),
+      });
 
       return {
         instanceName,
@@ -168,15 +221,23 @@ export class WhatsAppService {
         profilePictureUrl: response.data?.instance?.profilePictureUrl,
       };
     } catch (error: any) {
+      const errStatus = error?.response?.status;
+      const errMsg = error?.response?.data?.message || error?.message;
+
+      log.warn('[WA:getStatus] Error getting status', {
+        instanceName, status: errStatus, message: errMsg,
+      });
+
       // Instance не существует
-      if (error?.response?.status === 404) {
+      if (errStatus === 404) {
+        log.info('[WA:getStatus] Instance not found', { instanceName });
         return {
           instanceName,
           status: 'not_found' as EvolutionConnectionState,
           serverUrl: this.evolutionUrl,
         };
       }
-      log.error('Failed to get session status', error, { sessionId });
+      log.error('[WA:getStatus] Failed to get session status', error, { sessionId });
       throw error;
     }
   }

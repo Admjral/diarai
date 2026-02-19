@@ -46,9 +46,10 @@ router.post('/whatsapp', webhookLimiter, async (req: Request, res: Response) => 
   try {
     const payload = req.body as EvolutionWebhookPayload;
 
-    log.debug('WhatsApp webhook received (Evolution)', {
+    log.info('[Webhook:WA] Received', {
       event: payload.event,
       instance: payload.instance,
+      dataKeys: Object.keys(payload.data || {}).join(','),
     });
 
     // Сразу отвечаем 200 чтобы не было retry
@@ -69,16 +70,13 @@ router.post('/whatsapp', webhookLimiter, async (req: Request, res: Response) => 
         await handleQRCodeUpdate(payload);
         break;
       case 'SEND_MESSAGE':
-        // Подтверждение отправки - можно использовать для обновления статуса
-        log.debug('Send message confirmed', {
-          instance: payload.instance,
-        });
+        log.info('[Webhook:WA] Send message confirmed', { instance: payload.instance });
         break;
       default:
-        log.debug('Unhandled webhook event', { event: payload.event });
+        log.info('[Webhook:WA] Unhandled event', { event: payload.event, instance: payload.instance });
     }
   } catch (error) {
-    log.error('WhatsApp webhook error', error);
+    log.error('[Webhook:WA] Error processing webhook', error);
     // Не возвращаем ошибку - уже отправили 200
   }
 });
@@ -167,14 +165,12 @@ async function handleMessagesUpdate(payload: EvolutionWebhookPayload): Promise<v
 async function handleConnectionUpdate(payload: EvolutionWebhookPayload): Promise<void> {
   const data = payload.data as EvolutionConnectionUpdate;
 
-  log.info('Connection status update', {
+  log.info('[Webhook:WA:CONNECTION_UPDATE] Connection changed', {
     instance: payload.instance,
     state: data?.state,
     statusReason: data?.statusReason,
+    fullData: JSON.stringify(data || {}).substring(0, 500),
   });
-
-  // Можно уведомить frontend через WebSocket или обновить статус в БД
-  // TODO: Реализовать real-time уведомления для frontend
 }
 
 /**
@@ -183,13 +179,12 @@ async function handleConnectionUpdate(payload: EvolutionWebhookPayload): Promise
 async function handleQRCodeUpdate(payload: EvolutionWebhookPayload): Promise<void> {
   const data = payload.data as EvolutionQRCodeUpdate;
 
-  log.info('QR code updated', {
+  log.info('[Webhook:WA:QRCODE_UPDATED] QR code updated', {
     instance: payload.instance,
     count: data?.qrcode?.count,
+    hasBase64: !!(data?.qrcode?.base64),
+    base64Length: data?.qrcode?.base64?.length || 0,
   });
-
-  // Можно отправить новый QR код на frontend через WebSocket
-  // TODO: Реализовать push QR кода на frontend
 }
 
 /**

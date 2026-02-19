@@ -18,8 +18,10 @@ router.use(serviceAuthMiddleware);
 router.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.body;
+    log.info('[Route:POST /session/whatsapp] Create session request', { sessionId, headers: { userId: req.headers['x-user-id'] } });
 
     if (!sessionId) {
+      log.warn('[Route:POST /session/whatsapp] Missing sessionId');
       res.status(400).json({ success: false, error: 'sessionId required' });
       return;
     }
@@ -27,12 +29,17 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
     const whatsapp = getWhatsAppService();
     const session = await whatsapp.createSession(sessionId);
 
+    log.info('[Route:POST /session/whatsapp] Session created', { sessionId, status: session.status, instanceName: session.instanceName });
+
     res.json({
       success: true,
       data: session,
     });
-  } catch (error) {
-    log.error('Create WhatsApp session error', error);
+  } catch (error: any) {
+    log.error('[Route:POST /session/whatsapp] Error', {
+      message: error?.message, status: error?.response?.status,
+      responseData: JSON.stringify(error?.response?.data || {}).substring(0, 300),
+    });
     res.status(500).json({
       success: false,
       error: 'Failed to create session',
@@ -47,16 +54,29 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 router.get('/whatsapp/:sessionId/qr', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    log.info('[Route:GET /session/whatsapp/:id/qr] QR request', { sessionId });
 
     const whatsapp = getWhatsAppService();
     const qr = await whatsapp.getQRCode(sessionId);
+
+    log.info('[Route:GET /session/whatsapp/:id/qr] QR result', {
+      sessionId,
+      hasBase64: !!qr.base64,
+      base64Length: qr.base64?.length || 0,
+      hasCode: !!qr.code,
+      count: qr.count,
+    });
 
     res.json({
       success: true,
       data: qr,
     });
-  } catch (error) {
-    log.error('Get QR code error', error);
+  } catch (error: any) {
+    log.error('[Route:GET /session/whatsapp/:id/qr] Error', {
+      sessionId: req.params.sessionId,
+      message: error?.message, status: error?.response?.status,
+      responseData: JSON.stringify(error?.response?.data || {}).substring(0, 300),
+    });
     res.status(500).json({
       success: false,
       error: 'Failed to get QR code',
@@ -72,6 +92,7 @@ router.get('/whatsapp/:sessionId/qr', async (req: Request, res: Response) => {
 router.get('/whatsapp/:sessionId/status', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    log.info('[Route:GET /session/whatsapp/:id/status] Status request', { sessionId });
 
     const whatsapp = getWhatsAppService();
     const instance = await whatsapp.getSessionStatus(sessionId);
@@ -79,6 +100,15 @@ router.get('/whatsapp/:sessionId/status', async (req: Request, res: Response) =>
     // Маппим Evolution статус в WAHA-совместимый формат
     const wahaStatus = whatsapp.mapConnectionStatus(instance.status);
     const isConnected = whatsapp.isConnected(instance.status);
+
+    log.info('[Route:GET /session/whatsapp/:id/status] Status result', {
+      sessionId,
+      evolutionStatus: instance.status,
+      wahaStatus,
+      isConnected,
+      instanceName: instance.instanceName,
+      profileName: instance.profileName || 'none',
+    });
 
     res.json({
       success: true,
@@ -89,8 +119,11 @@ router.get('/whatsapp/:sessionId/status', async (req: Request, res: Response) =>
         isConnected,
       },
     });
-  } catch (error) {
-    log.error('Get session status error', error);
+  } catch (error: any) {
+    log.error('[Route:GET /session/whatsapp/:id/status] Error', {
+      sessionId: req.params.sessionId,
+      message: error?.message, status: error?.response?.status,
+    });
     res.status(500).json({
       success: false,
       error: 'Failed to get session status',

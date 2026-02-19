@@ -152,12 +152,22 @@ export async function deleteConfig(req: Request, res: Response) {
 export async function createWhatsAppSession(req: Request, res: Response) {
   try {
     const userId = req.user?.userId;
+    log.info('[Backend:createWASession] Request received', { userId });
+
     if (!userId) {
+      log.warn('[Backend:createWASession] No userId in token');
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
     const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
     const sessionId = `user-${userIdNum}-wa`;
+
+    log.info('[Backend:createWASession] Creating session', {
+      userId: userIdNum, sessionId,
+      messengerServiceUrl: MESSENGER_SERVICE_URL,
+      apiKeyPresent: !!MESSENGER_API_KEY,
+      apiKeyPrefix: MESSENGER_API_KEY?.substring(0, 8),
+    });
 
     // Создаем сессию в messenger-service
     const response = await axios.post(
@@ -168,8 +178,15 @@ export async function createWhatsAppSession(req: Request, res: Response) {
           'X-API-Key': MESSENGER_API_KEY,
           'X-User-Id': String(userIdNum),
         },
+        timeout: 15000,
       }
     );
+
+    log.info('[Backend:createWASession] Messenger-service response', {
+      success: response.data?.success,
+      status: response.data?.data?.status,
+      instanceName: response.data?.data?.instanceName,
+    });
 
     // Сохраняем sessionId в конфиге
     await prisma.messengerConfig.upsert({
@@ -191,13 +208,20 @@ export async function createWhatsAppSession(req: Request, res: Response) {
       },
     });
 
+    log.info('[Backend:createWASession] Session config saved', { userId: userIdNum, sessionId });
+
     res.json({
       success: true,
       sessionId,
       data: response.data.data,
     });
-  } catch (error) {
-    log.error('createWhatsAppSession error', error);
+  } catch (error: any) {
+    log.error('[Backend:createWASession] Error', {
+      message: error?.message,
+      code: error?.code,
+      status: error?.response?.status,
+      responseData: JSON.stringify(error?.response?.data || {}).substring(0, 500),
+    });
     res.status(500).json({ error: 'Failed to create session' });
   }
 }
@@ -209,6 +233,8 @@ export async function createWhatsAppSession(req: Request, res: Response) {
 export async function getWhatsAppQR(req: Request, res: Response) {
   try {
     const userId = req.user?.userId;
+    log.info('[Backend:getWAQR] Request received', { userId });
+
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -218,6 +244,7 @@ export async function getWhatsAppQR(req: Request, res: Response) {
     // Check cache first
     const cached = qrCache.get(userIdNum);
     if (cached && Date.now() - cached.timestamp < QR_CACHE_TTL) {
+      log.info('[Backend:getWAQR] Returning cached QR', { userId: userIdNum, cacheAge: Date.now() - cached.timestamp });
       return res.json(cached.data);
     }
 
@@ -231,25 +258,46 @@ export async function getWhatsAppQR(req: Request, res: Response) {
       },
     });
 
+    log.info('[Backend:getWAQR] Config lookup', {
+      userId: userIdNum,
+      hasConfig: !!config,
+      sessionId: config?.sessionId || 'none',
+      isConnected: config?.isConnected,
+    });
+
     if (!config?.sessionId) {
+      log.warn('[Backend:getWAQR] No session found', { userId: userIdNum });
       return res.status(404).json({ error: 'Session not found. Create session first.' });
     }
 
     // Получаем QR из messenger-service
-    const response = await axios.get(
-      `${MESSENGER_SERVICE_URL}/session/whatsapp/${config.sessionId}/qr`,
-      {
-        headers: { 'X-API-Key': MESSENGER_API_KEY },
-        timeout: 10000,
-      }
-    );
+    const url = `${MESSENGER_SERVICE_URL}/session/whatsapp/${config.sessionId}/qr`;
+    log.info('[Backend:getWAQR] Requesting QR from messenger-service', { url });
+
+    const response = await axios.get(url, {
+      headers: { 'X-API-Key': MESSENGER_API_KEY },
+      timeout: 10000,
+    });
+
+    log.info('[Backend:getWAQR] Messenger-service response', {
+      success: response.data?.success,
+      hasData: !!response.data?.data,
+      hasBase64: !!response.data?.data?.base64,
+      base64Length: response.data?.data?.base64?.length || 0,
+      count: response.data?.data?.count,
+    });
 
     // Cache the response
     qrCache.set(userIdNum, { data: response.data, timestamp: Date.now() });
 
     res.json(response.data);
-  } catch (error) {
-    log.error('getWhatsAppQR error', error);
+  } catch (error: any) {
+    log.error('[Backend:getWAQR] Error', {
+      message: error?.message,
+      code: error?.code,
+      status: error?.response?.status,
+      responseData: JSON.stringify(error?.response?.data || {}).substring(0, 300),
+    });
     res.status(500).json({ error: 'Failed to get QR code' });
   }
 }
@@ -277,20 +325,30 @@ export async function getWhatsAppStatus(req: Request, res: Response) {
     });
 
     if (!config?.sessionId) {
+      log.info('[Backend:getWAStatus] No session config', { userId: userIdNum });
       return res.json({ success: true, data: { status: 'NO_SESSION' } });
     }
 
     // Получаем статус из messenger-service
-    const response = await axios.get(
-      `${MESSENGER_SERVICE_URL}/session/whatsapp/${config.sessionId}/status`,
-      {
-        headers: { 'X-API-Key': MESSENGER_API_KEY },
-        timeout: 5000,
-      }
-    );
+    const url = `${MESSENGER_SERVICE_URL}/session/whatsapp/${config.sessionId}/status`;
+    log.info('[Backend:getWAStatus] Requesting status', { userId: userIdNum, sessionId: config.sessionId, url });
+
+    const response = await axios.get(url, {
+      headers: { 'X-API-Key': MESSENGER_API_KEY },
+      timeout: 5000,
+    });
 
     const sessionData = response.data?.data;
     const wahaStatus = sessionData?.status || 'UNKNOWN';
+
+    log.info('[Backend:getWAStatus] Status received', {
+      userId: userIdNum,
+      sessionId: config.sessionId,
+      wahaStatus,
+      evolutionStatus: sessionData?.evolutionStatus,
+      isConnected: sessionData?.isConnected,
+      profileName: sessionData?.profileName || 'none',
+    });
 
     // Обновляем isConnected в базе если статус изменился
     const isConnected = wahaStatus === 'WORKING' || wahaStatus === 'CONNECTED';
@@ -299,6 +357,7 @@ export async function getWhatsAppStatus(req: Request, res: Response) {
         where: { id: config.id },
         data: { isConnected, lastSyncAt: new Date() },
       });
+      log.info('[Backend:getWAStatus] Updated isConnected in DB', { userId: userIdNum, isConnected });
     }
 
     res.json({
@@ -309,8 +368,12 @@ export async function getWhatsAppStatus(req: Request, res: Response) {
         sessionId: config.sessionId,
       },
     });
-  } catch (error) {
-    log.error('getWhatsAppStatus error', error);
+  } catch (error: any) {
+    log.error('[Backend:getWAStatus] Error', {
+      message: error?.message,
+      code: error?.code,
+      status: error?.response?.status,
+    });
     res.status(500).json({ error: 'Failed to get session status' });
   }
 }
