@@ -103,6 +103,7 @@ services:
       WAHA_URL: http://evolution-api:8080
       REDIS_URL: redis://redis:6379
       DIAR_BACKEND_URL: http://backend:3001
+      MESSENGER_SERVICE_URL: http://messenger-service:3002
     depends_on:
       evolution-api:
         condition: service_started
