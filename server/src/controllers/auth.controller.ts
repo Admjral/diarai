@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { notifyAdminNewUser } from '../services/telegram.service.js';
 
 const prisma = new PrismaClient();
 
@@ -102,6 +103,11 @@ export const register = async (req: Request, res: Response) => {
     const token = generateToken(user);
 
     console.log(`[Auth] Зарегистрирован новый пользователь: ${normalizedPhone}`);
+
+    // Уведомление в Telegram (асинхронно, не блокирует ответ)
+    notifyAdminNewUser(normalizedPhone, user.name).catch((err) =>
+      console.error('[Auth] Telegram notify error:', err)
+    );
 
     res.status(201).json({
       message: 'Регистрация успешна',
