@@ -55,8 +55,14 @@ router.post('/whatsapp', webhookLimiter, async (req: Request, res: Response) => 
     // Сразу отвечаем 200 чтобы не было retry
     res.status(200).json({ success: true });
 
+    // Нормализуем event: Evolution API v2 отправляет "connection.update",
+    // а код ожидает "CONNECTION_UPDATE"
+    const normalizedEvent = payload.event?.includes('.')
+      ? payload.event.replace(/\./g, '_').toUpperCase()
+      : payload.event;
+
     // Обрабатываем асинхронно в зависимости от типа события
-    switch (payload.event) {
+    switch (normalizedEvent) {
       case 'MESSAGES_UPSERT':
         await handleMessagesUpsert(payload);
         break;
